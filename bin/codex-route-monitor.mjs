@@ -301,6 +301,8 @@ async function commandInstall(flags, uninstall = false) {
   const script = process.platform === "win32" ? "install-schedule.ps1" : "install-schedule.sh";
   const file = path.join(HERE, "..", "scripts", script);
   const { spawn } = await import("node:child_process");
+  const cli = typeof flags.cli === "string" ? path.resolve(flags.cli) : CLI;
+  const node = typeof flags.node === "string" ? path.resolve(flags.node) : process.execPath;
   const args =
     process.platform === "win32"
       ? [
@@ -310,9 +312,9 @@ async function commandInstall(flags, uninstall = false) {
           "-File",
           file,
           "-Cli",
-          CLI,
+          cli,
           "-Node",
-          process.execPath,
+          node,
           ...(uninstall ? ["-Uninstall"] : []),
           ...(flags["dry-run"] === true ? ["-DryRun"] : []),
         ]
@@ -320,9 +322,9 @@ async function commandInstall(flags, uninstall = false) {
           file,
           ...(uninstall ? ["--uninstall"] : []),
           "--cli",
-          CLI,
+          cli,
           "--node",
-          process.execPath,
+          node,
           ...(flags["dry-run"] === true ? ["--dry-run"] : []),
         ];
   const bin = process.platform === "win32" ? "powershell.exe" : "bash";
