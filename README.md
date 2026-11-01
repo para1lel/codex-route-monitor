@@ -127,7 +127,7 @@ node bin/codex-route-monitor.mjs uninstall-schedule
 | `effort` | `low` | `model_reasoning_effort` |
 | `probes` | `3` | 一次诊断要几条可用的回答（对应 ModelTrace 的校准 key） |
 | `probeAttempts` | `6` | 最多尝试几次（被拒答/截断会换一条再问） |
-| `probeTimeoutMs` | `300000` | 单条挑战的超时 |
+| `probeTimeoutMs` | `180000` | 单条挑战的超时 |
 | `pauseMs` | `3000` | 账号之间的间隔 |
 | `slots` | `[0,3,6,9,12,15,18,21]` | 本地时区的整点；第一个是「全量」时段 |
 | `catchUpMinutes` | `120` | 整三小时时段的补跑窗口 |
