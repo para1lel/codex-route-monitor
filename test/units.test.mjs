@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parsePoolText } from "../lib/magpie.mjs";
+import { parsePoolText, providerOffFrom } from "../lib/magpie.mjs";
 import { parseNumbers } from "../lib/fingerprint.mjs";
 import { writeCodexHome } from "../lib/probe.mjs";
 
@@ -18,6 +18,14 @@ test("magpie's pool report says which accounts take part", () => {
     { user: "woshijuruo@gmail.com", enabled: false },
   ]);
   assert.deepEqual(parsePoolText(""), []);
+});
+
+test("a provider magpie was told to leave alone is read as off", () => {
+  assert.equal(providerOffFrom({ providers: [{ id: "codex", off: true }] }, "codex"), true);
+  assert.equal(providerOffFrom({ providers: [{ id: "codex" }] }, "codex"), false);
+  assert.equal(providerOffFrom({ providers: [{ id: "other", off: true }] }, "codex"), false);
+  assert.equal(providerOffFrom({}, "codex"), false);
+  assert.equal(providerOffFrom(null, "codex"), false);
 });
 
 test("the parser keeps the longest run of numbers in range", () => {

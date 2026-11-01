@@ -1,4 +1,4 @@
-# magpie-codex-route-monitor
+# codex-route-monitor
 
 一个 magpie 插件：**监测 Codex 账号的路由质量**。它用 Codex CLI 的非交互接口，让每个账号按
 [ModelTrace](https://github.com/xqy2006/ModelTrace) 的三组随机数挑战各生成三次数字，再用 ModelTrace
@@ -29,9 +29,14 @@
 4. **落状态**：Luna ⇒ 停用，其它 ⇒ 启用，无法诊断（超时、429、截断）⇒ **保持原状**。
    启停通过 `magpie provider pool codex --accounts <健康账号…>` 完成：列出的账号启用、其余停用；
    当前登录账号的「停用」在 magpie 里表现为 `paused`（网关跳过它，登录态保留）。
-   如果**全部**账号都测出 Luna，magpie 的命令行无法表达「一个都不启用」，插件会把
-   `~/.config/magpie/logins.json` 里 Codex 账号写成 `on:false`/`paused:true`（先留备份
-   `logins.json.codex-route-monitor.bak`），再用 `provider pool` 读回来核验。
+   magpie 还有两条规则要顺着来：pool 的第一个账号会顺带成为 Codex 自己登录的账号
+   （`SetAccountOrder` → `SwitchLogin`），所以只要当前登录账号还健康，插件就把它放在第一位；
+   而「把正在登录的账号移到第一位」要求它已在启用状态，所以启用停用账号时会先做一次「保持现有
+   顺序、只把目标打开」的调用，再排最终顺序，最后读回 `provider pool` 核验。
+   如果**全部**账号都测出 Luna：magpie 规定「Codex 正在登录的账号永远在用」，账号开关无法全部关掉，
+   插件改为**把 Codex 订阅整个切掉**（`magpie provider off codex`）——这样任何请求都不会再走这些账号，
+   所有 GPT 路由组自动落到下一位（lingsuan）。下一次 00:00 的全量扫描会先临时打开订阅做探测，若仍无
+   健康账号再切掉；`magpie provider on codex` 可随时手动恢复。
 
 一次扫描的流程图：
 
@@ -51,7 +56,7 @@ lock ──▶ magpie healthcheck ──▶ accounts + pool ──▶ for each a
 
 ```bash
 magpie plugin add github:para1lel/codex-route-monitor
-magpie plugin list                 # 应看到 magpie-codex-route-monitor，且为 on
+magpie plugin list                 # 应看到 codex-route-monitor，且为 on
 ```
 
 105 是 headless 的 magpie 服务，直接在同一条 ssh 里装：
@@ -84,8 +89,8 @@ magpie 侧的两个工具（MCP 名以插件短名为前缀）：
 
 ```bash
 magpie tools | grep -i codex        # 列出工具
-magpie tool magpie-codex-route-monitor_codex_route_status
-magpie tool magpie-codex-route-monitor_codex_route_scan --scope all
+magpie tool codex-route-monitor_codex_route_status
+magpie tool codex-route-monitor_codex_route_scan --scope all
 ```
 
 `codex_route_scan` 只负责**启动**（扫描是独立进程，几分钟才结束），结果用 `codex_route_status` 或
@@ -174,9 +179,11 @@ lingsuan 提供 GPT-6.1 Terra；其它代理用 `group/gpt-6.1-sol` 的也同理
 - 探测是**真实的模型请求**，和被风控的账号共用额度；请勿把 `probes` 调太大。
 - 探测走 magpie 网关，不修改、不复制任何账号 token。
 - 扫描期间会把「原本停用」的账号临时启用（仅为了钉住它），一条探测完立刻按结果落地；
-  00:00 的全量扫描因此会有几分钟的「账号在启用状态」窗口。
-- 账号全部风控时，脚本会写 magpie 的 `logins.json`（有备份）并核验；这是唯一一处直接改 magpie 文件，
-  因为命令行无法表达「一个都不启用」。
+  00:00 的全量扫描因此会有几分钟的「账号在启用状态」窗口。全部风控时，00:00 也会先把订阅打开几分钟
+  做复测，再切回去。
+- 账号全部风控时，插件把 Codex 订阅整个切掉（`magpie provider off codex`），而不是逐个关账号：
+  magpie 不允许把「正在登录的账号」单独停用（它永远算在用）。恢复：`magpie provider on codex`。
+  插件只改 magpie 的这两样东西——账号池的启停、订阅的开关——从不改 magpie 的配置文件。
 
 ## 局限
 
@@ -192,7 +199,7 @@ lingsuan 提供 GPT-6.1 Terra；其它代理用 `group/gpt-6.1-sol` 的也同理
 ## 卸载
 
 ```bash
-magpie plugin rm magpie-codex-route-monitor     # 名字以 magpie plugin list 为准
+magpie plugin rm codex-route-monitor     # 名字以 magpie plugin list 为准
 node bin/codex-route-monitor.mjs uninstall-schedule   # 如果装过系统定时器
 ```
 
@@ -217,8 +224,7 @@ lib/probe.mjs         codex exec 的隔离 CODEX_HOME 与超时处理
 lib/policy.mjs        判定规则
 lib/core.mjs          扫描编排、落地、记录
 lib/schedule.mjs      时段、补跑、去重
-lib/magpie.mjs        magpie 命令行的封装
-lib/alloff.mjs        「全部风控」时唯一的一处文件兜底
+lib/magpie.mjs        magpie 命令行的封装（账号池、订阅开关）
 data/unified_bank.json  ModelTrace 指纹库副本
 ```
 
@@ -232,14 +238,18 @@ MIT。算法与指纹库来自 [ModelTrace](https://github.com/xqy2006/ModelTrac
 
 ## English
 
-`magpie-codex-route-monitor` is a magpie plugin that keeps a fleet of Codex accounts honest. Every three
+`codex-route-monitor` is a magpie plugin that keeps a fleet of Codex accounts honest. Every three
 hours (and over every account at midnight) it asks each account, through `codex exec` with the
 `X-Magpie-Account` header pinning one account, the three random-number challenges from
 [ModelTrace](https://github.com/xqy2006/ModelTrace). A JavaScript port of ModelTrace's fingerprint —
 held to the original's own answers by a parity test — says which model answered. An account whose top
 answer is **GPT-5.6 Luna** or **GPT-6 Luna** is being held back, and the plugin switches it off in magpie
 (`magpie provider pool codex`); any other answer switches it on. Accounts it cannot diagnose are left as
-they are. The schedule runs inside magpie's plugin host, and an optional OS schedule (Windows Task
-Scheduler or systemd user timers) calls the same slot-aware `scan --scope auto`, so the two never double up.
+they are. When every account is held back, the plugin switches the Codex subscription itself off
+(`magpie provider off codex`) — magpie always keeps its signed-in account in use, so that is the only way
+to leave none of them serving, and every routing group of it falls to its next member (a lingsuan GPT
+provider on these two machines). The schedule runs inside magpie's plugin host, and an optional OS
+schedule (Windows Task Scheduler or systemd user timers) calls the same slot-aware `scan --scope auto`,
+so the two never double up.
 
 Install: `magpie plugin add github:para1lel/codex-route-monitor`.
