@@ -70,6 +70,12 @@ ssh 192.168.80.105 'magpie plugin add github:para1lel/codex-route-monitor && mag
 > 本机是桌面版 magpie，只有 magpie 在跑时插件才有心跳；如果希望「关机/退出 magpie 也不漏」，
 > 用下面的 `install-schedule` 再挂一层系统定时器（两者按「时段」去重，不会重复扫描），
 > 或者至少 `magpie autostart on`。
+>
+> 1.0.6 起，systemd 单元会自己带上 `PATH`（node 与 magpie 所在目录）和
+> `CODEX_ROUTE_MONITOR_MAGPIE=<magpie 绝对路径>`：`systemd --user` 的默认 PATH 只有
+> `/usr/local/bin:/usr/bin:/bin`，而 magpie 通常装在 `~/.local/bin`，不写进单元就会
+> `scan failed: magpie was not found`（105/116 在 2026-11-02 00:00 就是这么失败的）。
+> 升级插件后要重跑一次 `install-schedule` 重写单元。
 
 ### 本机和 105 上实际装了什么
 

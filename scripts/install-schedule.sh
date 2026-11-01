@@ -28,6 +28,27 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 [ -n "$NODE" ] || { echo "node was not found; pass --node <path to node>" >&2; exit 1; }
 [ -f "$CLI" ] || { echo "the monitor's command line was not found at $CLI" >&2; exit 1; }
 
+# The unit must find magpie itself: systemd --user starts it with a bare PATH
+# (/usr/local/bin:/usr/bin:/bin), while magpie usually lives in ~/.local/bin.
+# Pin the binary found now, and put its folder (and node's) on the unit's PATH
+# so anything magpie runs finds the same tools.
+MAGPIE_BIN="$(command -v magpie || true)"
+if [ -z "$MAGPIE_BIN" ] && [ -x "$HOME/.local/bin/magpie" ]; then
+    MAGPIE_BIN="$HOME/.local/bin/magpie"
+fi
+NODE_DIR="$(dirname "$NODE")"
+UNIT_PATH="$NODE_DIR"
+if [ -n "$MAGPIE_BIN" ]; then
+    MAGPIE_DIR="$(dirname "$MAGPIE_BIN")"
+    case ":$UNIT_PATH:" in
+        *":$MAGPIE_DIR:"*) ;;
+        *) UNIT_PATH="$UNIT_PATH:$MAGPIE_DIR" ;;
+    esac
+else
+    UNIT_PATH="$UNIT_PATH:$HOME/.local/bin"
+fi
+UNIT_PATH="$UNIT_PATH:/usr/local/bin:/usr/bin:/bin"
+
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$UNIT_DIR"
 
@@ -51,16 +72,28 @@ if [ "$UNINSTALL" -eq 1 ]; then
     exit 0
 fi
 
-write_service() {
-    local file="$1"
-    cat > "$file" <<EOF
+service_content() {
+    cat <<EOF
 [Unit]
 Description=Codex route monitor for magpie (magpie-codex-route-monitor)
 
 [Service]
 Type=oneshot
+Environment="PATH=$UNIT_PATH"
+EOF
+    if [ -n "$MAGPIE_BIN" ]; then
+        cat <<EOF
+Environment="CODEX_ROUTE_MONITOR_MAGPIE=$MAGPIE_BIN"
+EOF
+    fi
+    cat <<EOF
 ExecStart=$NODE $CLI scan --scope auto --trigger os
 EOF
+}
+
+write_service() {
+    local file="$1"
+    service_content > "$file"
     echo "wrote: $file"
 }
 
@@ -81,7 +114,9 @@ EOF
 }
 
 if [ "$DRY" -eq 1 ]; then
-    echo "would write $UNIT_DIR/$DAILY_SERVICE and the two timers, then enable them"
+    echo "would write $UNIT_DIR/$DAILY_SERVICE:"
+    service_content
+    echo "would write $UNIT_DIR/$DAILY_TIMER and $UNIT_DIR/$THREE_TIMER, then enable them"
     exit 0
 fi
 
