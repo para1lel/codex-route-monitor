@@ -47,13 +47,13 @@ test("a slot already run is not run again", () => {
 test("a running slot is left alone until it is stale", () => {
   reset({
     "2026-11-02T00:00": done("2026-11-02T00:00"),
-    "2026-11-02T03:00": { status: "running", at: new Date().toISOString() },
+    "2026-11-02T03:00": { status: "running", at: "2026-11-02T03:01:00" },
   });
   assert.equal(dueSlot(config, at("2026-11-02T03:05")), null);
   // a run that died three hours ago is taken again
   reset({
     "2026-11-02T00:00": done("2026-11-02T00:00"),
-    "2026-11-02T03:00": { status: "running", at: new Date(Date.now() - 3 * 3600_000).toISOString() },
+    "2026-11-02T03:00": { status: "running", at: "2026-11-02T00:00:00" },
   });
   assert.equal(dueSlot(config, at("2026-11-02T03:05")).key, "2026-11-02T03:00");
 });
@@ -76,12 +76,17 @@ test("a three-hourly slot missed by more than the window is not run late", () =>
   assert.equal(dueSlot(config, at("2026-11-02T16:30")).key, "2026-11-02T15:00");
 });
 
-test("a failed slot is not taken again the same day", () => {
+test("a failed slot is tried again after a while", () => {
   reset({
     "2026-11-02T00:00": done("2026-11-02T00:00"),
-    "2026-11-02T03:00": { status: "failed", at: "2026-11-02T03:10:00.000Z", error: "boom" },
+    "2026-11-02T03:00": { status: "failed", at: "2026-11-02T03:10:00", error: "magpie's gateway does not answer" },
   });
-  assert.equal(dueSlot(config, at("2026-11-02T03:30")), null);
+  // at 03:20 it has failed too recently to be asked again
+  assert.equal(dueSlot(config, at("2026-11-02T03:20")), null);
+  // at 03:40 the retry window has passed, and the slot is still inside its own
+  assert.equal(dueSlot(config, at("2026-11-02T03:40")).key, "2026-11-02T03:00");
+  // past the slot's own window, a failure is the day's answer
+  assert.equal(dueSlot(config, at("2026-11-02T05:30")), null);
 });
 
 test("the plan shows the slots around now and what came of them", () => {

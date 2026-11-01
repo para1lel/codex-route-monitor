@@ -171,6 +171,7 @@ node bin/codex-route-monitor.mjs uninstall-schedule
 | `pauseMs` | `3000` | 账号之间的间隔 |
 | `slots` | `[0,3,6,9,12,15,18,21]` | 本地时区的整点；第一个是「全量」时段 |
 | `catchUpMinutes` | `120` | 整三小时时段的补跑窗口 |
+| `retryFailedMinutes` | `15` | 扫描失败（magpie 没开、网关不应答）后多久重试，仍在该时段窗口内 |
 | `riskModels` | `["gpt-5.6-luna","gpt-6-luna"]` | top-1 命中即判定为风控 |
 | `dryRun` | `false` | 只报告，不改 magpie 的开关 |
 | `scheduler` | `true` | 是否在插件宿主里跑定时器 |
