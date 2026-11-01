@@ -77,7 +77,9 @@ async function commandScan(flags) {
     const now = new Date();
     const slot = dueSlot(config, now);
     if (!slot) {
-      const plan = schedulePlan(config, now).filter((item) => item.status === "pending");
+      const plan = schedulePlan(config, now).filter(
+        (item) => item.status === "pending" && new Date(item.at) > now,
+      );
       if (echo) {
         console.log("nothing is due: the schedule has no slot to run now");
         if (plan.length) console.log(`next: ${plan[0].slot} (${plan[0].scope})`);

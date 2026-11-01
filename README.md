@@ -71,6 +71,29 @@ ssh 192.168.80.105 'magpie plugin add github:para1lel/codex-route-monitor && mag
 > 用下面的 `install-schedule` 再挂一层系统定时器（两者按「时段」去重，不会重复扫描），
 > 或者至少 `magpie autostart on`。
 
+### 本机和 105 上实际装了什么
+
+| | 本机（Windows, `aigcic`） | 192.168.80.105（Ubuntu, magpie 服务） |
+| --- | --- | --- |
+| 插件 | `github:para1lel/codex-route-monitor`,1.0.2,on | 同左 |
+| 插件定时器 | 插件宿主里每 20 秒 tick | 同左 |
+| 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-3-Hourly`（03:00 起每 3 小时） | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-3h.timer` |
+| 系统定时器调用的命令 | `node <安装后的插件>/bin/codex-route-monitor.mjs scan --scope auto --trigger os` | 同左（`node` 为 nvm 的 v24） |
+| GPT 兜底 | `group/gpt-6.1-sol` 等 8 个组：codex → lingsuan-gpt | 同左 |
+
+查/删系统定时器：
+
+```powershell
+schtasks /Query /TN CodexRouteMonitor-Daily /V /FO LIST
+node "$env:USERPROFILE\.config\magpie\plugins\node_modules\codex-route-monitor\bin\codex-route-monitor.mjs" uninstall-schedule
+```
+
+```bash
+systemctl --user list-timers 'codex-route-monitor*'
+~/.nvm/versions/node/v24.18.0/bin/node \
+  ~/.config/magpie/plugins/node_modules/codex-route-monitor/bin/codex-route-monitor.mjs uninstall-schedule
+```
+
 ## 验证
 
 ```bash
@@ -95,6 +118,22 @@ magpie tool codex-route-monitor_codex_route_scan --scope all
 
 `codex_route_scan` 只负责**启动**（扫描是独立进程，几分钟才结束），结果用 `codex_route_status` 或
 `node bin/codex-route-monitor.mjs status` 看。
+
+`status` 的样子：
+
+```text
+state: C:\Users\21651\.config\magpie\codex-route-monitor
+model: codex/gpt-6.1-sol · effort: low · probes: 3
+schedule: 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 (local)
+last run: 2026-11-01T19-04-40-541 (all) done · finished 2026-11-01T11:14:06.568Z
+  omoyan0_1@163.com            risk   gpt-5.6-luna
+  woshijuruo@gmail.com         error
+next slots:
+  2026-11-01T21:00  enabled
+```
+
+`risk` 是判为风控（已停用），`ok` 是正常（保持/改为启用），`error` 是这一轮没拿到三条可用回答
+（保持原状态，不据此改开关）。
 
 ## 定时
 

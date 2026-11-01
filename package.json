@@ -1,6 +1,6 @@
 {
   "name": "codex-route-monitor",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Codex account routing monitor for magpie: probes every Codex account through codex exec with ModelTrace's random-number challenge, attributes the model that answered, and enables or disables the account in magpie.",
   "type": "module",
   "main": "index.js",
