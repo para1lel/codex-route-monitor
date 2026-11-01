@@ -1,0 +1,30 @@
+This package contains work from ModelTrace.
+
+  ModelTrace — https://github.com/xqy2006/ModelTrace
+  Copyright (c) 2026 xqy2006
+  MIT License (see LICENSE)
+
+What comes from ModelTrace:
+
+  lib/fingerprint.mjs   A JavaScript port of ModelTrace's fingerprint.py:
+                        the number parser, the Hellinger and ordered-block
+                        features, the nuisance-direction projection, the
+                        standardisation, the cross-validated softmax
+                        temperature and the family roll-up. test/fingerprint.test.mjs
+                        holds it to fingerprint.py's own answers, computed by
+                        test/parity/check.py.
+  lib/challenges.mjs    The three random-number challenges, ported from
+                        ModelTrace's generate_challenges(), wording unchanged:
+                        the fingerprint only means something against prompts
+                        shaped the way its reference data was collected.
+  data/unified_bank.json
+                        A copy of ModelTrace's data/unified_bank.json at the
+                        time of writing: the model centroids, their scales,
+                        the nuisance bases and the calibration temperatures.
+                        Everything the monitor scores is scored against it.
+
+ModelTrace itself builds on hanlinwenyuan/hlwy-ai-checker, which first used a
+language model's random-number bias to check a third-party channel.
+
+The magpie plugin API, the X-Magpie-Account header and `magpie provider pool`
+are magpie's: https://github.com/yetone/magpie (MIT).
