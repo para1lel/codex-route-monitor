@@ -75,7 +75,7 @@ ssh 192.168.80.105 'magpie plugin add github:para1lel/codex-route-monitor && mag
 
 | | 本机（Windows, `aigcic`） | 192.168.80.105（Ubuntu, magpie 服务） |
 | --- | --- | --- |
-| 插件 | `github:para1lel/codex-route-monitor`,1.0.2,on | 同左 |
+| 插件 | `github:para1lel/codex-route-monitor`,1.0.3,on | 同左 |
 | 插件定时器 | 插件宿主里每 20 秒 tick | 同左 |
 | 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-3-Hourly`（03:00 起每 3 小时） | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-3h.timer` |
 | 系统定时器调用的命令 | `node <安装后的插件>/bin/codex-route-monitor.mjs scan --scope auto --trigger os` | 同左（`node` 为 nvm 的 v24） |
