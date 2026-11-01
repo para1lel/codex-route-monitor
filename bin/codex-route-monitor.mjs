@@ -161,7 +161,10 @@ function commandStatus(flags) {
     }
   }
   const plan = schedulePlan(config);
-  const upcoming = plan.filter((item) => item.status === "pending").slice(0, 3);
+  const now = new Date();
+  const upcoming = plan
+    .filter((item) => item.status === "pending" && new Date(item.at) > now)
+    .slice(0, 3);
   if (upcoming.length) {
     console.log("next slots:");
     for (const item of upcoming) console.log(`  ${item.slot}  ${item.scope}`);
