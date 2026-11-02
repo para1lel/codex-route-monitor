@@ -53,17 +53,20 @@ UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$UNIT_DIR"
 
 DAILY_SERVICE="codex-route-monitor-daily.service"
-THREE_SERVICE="codex-route-monitor-3h.service"
+ENABLED_SERVICE="codex-route-monitor-enabled.service"
 DAILY_TIMER="codex-route-monitor-daily.timer"
-THREE_TIMER="codex-route-monitor-3h.timer"
+ENABLED_TIMER="codex-route-monitor-enabled.timer"
+# the every-three-hours units this replaces, removed so they stop firing
+OLD_SERVICE="codex-route-monitor-3h.service"
+OLD_TIMER="codex-route-monitor-3h.timer"
 
 run() {
     if [ "$DRY" -eq 1 ]; then echo "would run: $*"; else "$@"; fi
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then
-    run systemctl --user disable --now "$DAILY_TIMER" "$THREE_TIMER" 2>/dev/null || true
-    for unit in "$DAILY_TIMER" "$THREE_TIMER" "$DAILY_SERVICE" "$THREE_SERVICE"; do
+    run systemctl --user disable --now "$DAILY_TIMER" "$ENABLED_TIMER" "$OLD_TIMER" 2>/dev/null || true
+    for unit in "$DAILY_TIMER" "$ENABLED_TIMER" "$DAILY_SERVICE" "$ENABLED_SERVICE" "$OLD_TIMER" "$OLD_SERVICE"; do
         if [ -f "$UNIT_DIR/$unit" ]; then
             if [ "$DRY" -eq 1 ]; then echo "would remove: $UNIT_DIR/$unit"; else rm -f "$UNIT_DIR/$unit"; echo "removed: $UNIT_DIR/$unit"; fi
         fi
@@ -116,18 +119,22 @@ EOF
 if [ "$DRY" -eq 1 ]; then
     echo "would write $UNIT_DIR/$DAILY_SERVICE:"
     service_content
-    echo "would write $UNIT_DIR/$DAILY_TIMER and $UNIT_DIR/$THREE_TIMER, then enable them"
+    echo "would write $UNIT_DIR/$DAILY_TIMER and $UNIT_DIR/$ENABLED_TIMER, then enable them"
     exit 0
 fi
 
+# the every-three-hours timer this replaces: stop it before the new one starts
+systemctl --user disable --now "$OLD_TIMER" 2>/dev/null || true
+rm -f "$UNIT_DIR/$OLD_TIMER" "$UNIT_DIR/$OLD_SERVICE"
+
 write_service "$UNIT_DIR/$DAILY_SERVICE"
-# one service per schedule is one name; the three-hourly timer reuses it
-cp "$UNIT_DIR/$DAILY_SERVICE" "$UNIT_DIR/$THREE_SERVICE"
+# one service per schedule is one name; the 08:00/16:00 timer reuses it
+cp "$UNIT_DIR/$DAILY_SERVICE" "$UNIT_DIR/$ENABLED_SERVICE"
 write_timer "$UNIT_DIR/$DAILY_TIMER" "*-*-* 00:00:00" "Codex route monitor: every Codex account at midnight"
-write_timer "$UNIT_DIR/$THREE_TIMER" "*-*-* 03,06,09,12,15,18,21:00:00" "Codex route monitor: the Codex accounts in use, every three hours"
+write_timer "$UNIT_DIR/$ENABLED_TIMER" "*-*-* 08,16:00:00" "Codex route monitor: the Codex accounts in use, at 08:00 and 16:00"
 
 systemctl --user daemon-reload
-systemctl --user enable --now "$DAILY_TIMER" "$THREE_TIMER"
+systemctl --user enable --now "$DAILY_TIMER" "$ENABLED_TIMER"
 echo
-echo "enabled: $DAILY_TIMER, $THREE_TIMER"
+echo "enabled: $DAILY_TIMER, $ENABLED_TIMER"
 echo "next runs: systemctl --user list-timers 'codex-route-monitor*'"

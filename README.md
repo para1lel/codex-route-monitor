@@ -6,7 +6,7 @@
 被风控、请求被降级，插件会把它在 magpie 里**停用**；回答是别的模型则**启用**。
 
 - 每天 **00:00** 测**全部** Codex 账号（含已停用的），按结果启用/停用；
-- 每天 **03:00 / 06:00 / 09:00 / 12:00 / 15:00 / 18:00 / 21:00** 只测**正在启用**的账号，结果为 Luna 就停用。
+- 每天 **08:00 / 16:00** 只测**正在启用**的账号，结果为 Luna 就停用。
 
 > 判定规则来自使用者的要求：诊断结果 top-1 是 `gpt-5.6-luna` 或 `gpt-6-luna` ⇒ 账号被风控。
 
@@ -83,7 +83,7 @@ ssh 192.168.80.105 'magpie plugin add github:para1lel/codex-route-monitor && mag
 | --- | --- | --- |
 | 插件 | `github:para1lel/codex-route-monitor`,1.0.5,on | 同左 |
 | 插件定时器 | 无（不再轮询；只有 `scheduler: true` 时才在宿主里 tick） | 同左 |
-| 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-3-Hourly`（03:00 起每 3 小时），都走隐藏启动器 | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-3h.timer` |
+| 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-Enabled`（每天 08:00 与 16:00），都走隐藏启动器 | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-enabled.timer` |
 | 系统定时器调用的命令 | `wscript <插件>/bin/run-hidden.vbs scan --scope auto --trigger os`（窗口样式 0，不弹控制台） | `node <插件>/bin/codex-route-monitor.mjs scan --scope auto --trigger os` |
 | GPT 兜底 | `group/gpt-6.1-sol` 等 8 个组：codex → lingsuan-gpt | 同左 |
 
@@ -130,7 +130,7 @@ magpie tool codex-route-monitor_codex_route_scan --scope all
 ```text
 state: C:\Users\21651\.config\magpie\codex-route-monitor
 model: codex/gpt-6.1-sol · effort: low · probes: 3
-schedule: 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 (local)
+schedule: 00:00, 08:00, 16:00 (local)
 last run: 2026-11-01T19-04-40-541 (all) done · finished 2026-11-01T11:14:06.568Z
   omoyan0_1@163.com            risk   gpt-5.6-luna
   woshijuruo@gmail.com         error
@@ -146,9 +146,9 @@ next slots:
 | 时间（本地时区） | 范围 | 行为 |
 | --- | --- | --- |
 | 00:00 | `all` | 测全部账号（含停用的），Luna→停用，其它→启用；停用账号会为探测临时启用，测完按结果落地 |
-| 03:00…21:00 每 3 小时 | `enabled` | 只测正在启用的账号；Luna→停用，其它保持启用 |
+| 08:00、16:00 | `enabled` | 只测正在启用的账号；Luna→停用，其它保持启用 |
 
-- 漏跑补跑：00:00 的全量在**当天内**都可以补跑；整三小时的时段只在开始后 **120 分钟**内补跑。
+- 漏跑补跑：00:00 的全量在**当天内**都可以补跑；08:00 / 16:00 的时段只在开始后 **120 分钟**内补跑。
 - 「正在跑」的时段超过 **45 分钟**没落地，视为进程已死，下一个 tick 会重新发起。真正的扫描进程还活着时它
   一直握着 `scan.lock`，tick 见到锁就不再动这个时段，所以一条慢扫描（单账号最多 60 分钟）跑得再久也不会被
   重新发起。
@@ -177,8 +177,8 @@ node bin/codex-route-monitor.mjs uninstall-schedule
 | `probeTimeoutMs` | `600000` | 单条挑战（一次请求）的超时：10 分钟 |
 | `accountBudgetMs` | `3600000` | 单账号总预算，重试也算在内：60 分钟；超了就不再重试，记为无法诊断 |
 | `pauseMs` | `3000` | 账号之间的间隔 |
-| `slots` | `[0,3,6,9,12,15,18,21]` | 本地时区的整点；第一个是「全量」时段 |
-| `catchUpMinutes` | `120` | 整三小时时段的补跑窗口 |
+| `slots` | `[0,8,16]` | 本地时区的整点；第一个是「全量」时段，其余只测启用中的账号 |
+| `catchUpMinutes` | `120` | 非全量时段的补跑窗口 |
 | `retryFailedMinutes` | `15` | 扫描失败（magpie 没开、网关不应答）后多久重试，仍在该时段窗口内 |
 | `riskModels` | `["gpt-5.6-luna","gpt-6-luna"]` | top-1 命中即判定为风控 |
 | `dryRun` | `false` | 只报告，不改 magpie 的开关 |

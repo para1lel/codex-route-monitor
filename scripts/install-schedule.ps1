@@ -21,10 +21,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$TaskNames = @("CodexRouteMonitor-Daily", "CodexRouteMonitor-3-Hourly")
+$TaskNames = @("CodexRouteMonitor-Daily", "CodexRouteMonitor-Enabled")
+# the every-three-hours task this replaces, removed so it stops firing
+$OldTaskNames = @("CodexRouteMonitor-3-Hourly")
 
 function Remove-Tasks {
-    foreach ($name in $TaskNames) {
+    foreach ($name in ($TaskNames + $OldTaskNames)) {
         $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
         if (-not $existing) {
             Write-Host "not there: $name"
@@ -88,28 +90,36 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 3)
 
 $dailyTrigger = New-ScheduledTaskTrigger -Daily -At "00:00"
-$threeHourlyTrigger = New-ScheduledTaskTrigger -Once -At "03:00" `
-    -RepetitionInterval (New-TimeSpan -Hours 3) `
-    -RepetitionDuration (New-TimeSpan -Days 3650)
+$morningTrigger = New-ScheduledTaskTrigger -Daily -At "08:00"
+$afternoonTrigger = New-ScheduledTaskTrigger -Daily -At "16:00"
 
 $tasks = @(
-    @{ Name = $TaskNames[0]; Trigger = $dailyTrigger; Description = "Codex route monitor: every Codex account at midnight (magpie-codex-route-monitor)" },
-    @{ Name = $TaskNames[1]; Trigger = $threeHourlyTrigger; Description = "Codex route monitor: the Codex accounts in use, every three hours (magpie-codex-route-monitor)" }
+    @{ Name = $TaskNames[0]; Triggers = @($dailyTrigger); Description = "Codex route monitor: every Codex account at midnight (magpie-codex-route-monitor)" },
+    @{ Name = $TaskNames[1]; Triggers = @($morningTrigger, $afternoonTrigger); Description = "Codex route monitor: the Codex accounts in use, at 08:00 and 16:00 (magpie-codex-route-monitor)" }
 )
 
+# the every-three-hours task has no place in the 08:00/16:00 schedule
+$old = Get-ScheduledTask -TaskName $OldTaskNames[0] -ErrorAction SilentlyContinue
+if ($old -and -not $DryRun) {
+    Unregister-ScheduledTask -TaskName $OldTaskNames[0] -Confirm:$false
+    Write-Host "removed: $($OldTaskNames[0])"
+}
+
 foreach ($task in $tasks) {
-    $line = "wscript `"$vbs`" scan --scope auto --trigger os  ($($task.Name), hidden)"
+    $when = ($task.Triggers | ForEach-Object { $_.StartBoundary.Substring(11, 5) }) -join " and "
+    $line = "wscript `"$vbs`" scan --scope auto --trigger os  ($($task.Name) at $when, hidden)"
     if ($DryRun) {
         Write-Host "would register: $line"
         continue
     }
-    Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $task.Trigger -Settings $settings -Description $task.Description -Force | Out-Null
+    Register-ScheduledTask -TaskName $task.Name -Action $action -Trigger $task.Triggers -Settings $settings -Description $task.Description -Force | Out-Null
     Write-Host "registered: $line"
 }
 
 if (-not $DryRun) {
     Write-Host ""
-    Write-Host "Both tasks run only when a slot is due; see:"
+    Write-Host "Both tasks run only when a slot is due (midnight, 08:00, 16:00); see:"
     Write-Host "  schtasks /Query /TN $($TaskNames[0]) /V /FO LIST"
+    Write-Host "  schtasks /Query /TN $($TaskNames[1]) /V /FO LIST"
     Write-Host "  node `"$Cli`" schedule"
 }
