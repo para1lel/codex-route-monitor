@@ -82,9 +82,9 @@ ssh 192.168.80.105 'magpie plugin add github:para1lel/codex-route-monitor && mag
 | | 本机（Windows, `aigcic`） | 192.168.80.105（Ubuntu, magpie 服务） |
 | --- | --- | --- |
 | 插件 | `github:para1lel/codex-route-monitor`,1.0.5,on | 同左 |
-| 插件定时器 | 插件宿主里每 20 秒 tick | 同左 |
-| 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-3-Hourly`（03:00 起每 3 小时） | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-3h.timer` |
-| 系统定时器调用的命令 | `node <安装后的插件>/bin/codex-route-monitor.mjs scan --scope auto --trigger os` | 同左（`node` 为 nvm 的 v24） |
+| 插件定时器 | 无（不再轮询；只有 `scheduler: true` 时才在宿主里 tick） | 同左 |
+| 系统定时器 | 计划任务 `CodexRouteMonitor-Daily`（每天 00:00）、`CodexRouteMonitor-3-Hourly`（03:00 起每 3 小时），都走隐藏启动器 | systemd --user `codex-route-monitor-daily.timer`、`codex-route-monitor-3h.timer` |
+| 系统定时器调用的命令 | `wscript <插件>/bin/run-hidden.vbs scan --scope auto --trigger os`（窗口样式 0，不弹控制台） | `node <插件>/bin/codex-route-monitor.mjs scan --scope auto --trigger os` |
 | GPT 兜底 | `group/gpt-6.1-sol` 等 8 个组：codex → lingsuan-gpt | 同左 |
 
 查/删系统定时器：
@@ -182,7 +182,7 @@ node bin/codex-route-monitor.mjs uninstall-schedule
 | `retryFailedMinutes` | `15` | 扫描失败（magpie 没开、网关不应答）后多久重试，仍在该时段窗口内 |
 | `riskModels` | `["gpt-5.6-luna","gpt-6-luna"]` | top-1 命中即判定为风控 |
 | `dryRun` | `false` | 只报告，不改 magpie 的开关 |
-| `scheduler` | `true` | 是否在插件宿主里跑定时器 |
+| `scheduler` | `false` | 是否保留插件宿主里的轮询 tick（默认关：扫描全靠系统定时器在槽点触发，平时不跑任何东西） |
 | `gatewayUrl` | 自动 | 默认 `http://127.0.0.1:3425`（插件里取 `MAGPIE_ADDR`） |
 | `gatewayKey` | `magpie` | 请求网关用的 key（本机默认值） |
 
