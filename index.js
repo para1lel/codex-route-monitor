@@ -11,7 +11,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logLine, loadConfig, stateDir } from "./lib/config.mjs";
 import { statusReport } from "./lib/core.mjs";
-import { CLI, schedulePlan, startScheduler } from "./lib/schedule.mjs";
+import { CLI, ensureRunner, schedulePlan, startScheduler } from "./lib/schedule.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -31,6 +31,13 @@ function startScanInBackground({ scope, dryRun }) {
 
 export default async function codexRouteMonitor(input, options) {
   const config = loadConfig();
+  // a plugin update replaces this folder: put the Windows launcher back where
+  // the scheduled tasks expect it, before a slot can come round
+  try {
+    ensureRunner();
+  } catch (error) {
+    logLine(`the Windows launcher could not be written: ${String(error?.message ?? error)}`);
+  }
   const started = startScheduler({ config });
   logLine(
     `codex-route-monitor loaded (${started.started ? "schedule on" : `schedule not started: ${started.reason}`})`,
