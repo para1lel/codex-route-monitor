@@ -149,7 +149,9 @@ next slots:
 | 03:00…21:00 每 3 小时 | `enabled` | 只测正在启用的账号；Luna→停用，其它保持启用 |
 
 - 漏跑补跑：00:00 的全量在**当天内**都可以补跑；整三小时的时段只在开始后 **120 分钟**内补跑。
-- 「正在跑」的时段超过 **45 分钟**没落地，视为进程已死，下一个 tick 会重新发起。
+- 「正在跑」的时段超过 **45 分钟**没落地，视为进程已死，下一个 tick 会重新发起。真正的扫描进程还活着时它
+  一直握着 `scan.lock`，tick 见到锁就不再动这个时段，所以一条慢扫描（单账号最多 60 分钟）跑得再久也不会被
+  重新发起。
 - 同一时刻只允许一个扫描（`scan.lock`），插件心跳、手工命令、系统定时器三者互斥。
 - 时段记录在 `state.json` 的 `slots` 里，`node bin/codex-route-monitor.mjs schedule` 可以看。
 
@@ -172,8 +174,8 @@ node bin/codex-route-monitor.mjs uninstall-schedule
 | `effort` | `low` | `model_reasoning_effort` |
 | `probes` | `3` | 一次诊断要几条可用的回答（对应 ModelTrace 的校准 key） |
 | `probeAttempts` | `8` | 最多尝试几次（被拒答/截断会换一条再问；连续两次整条超时则放弃） |
-| `probeTimeoutMs` | `180000` | 单条挑战的超时 |
-| `accountBudgetMs` | `720000` | 单账号总预算；超了就不再重试，记为无法诊断 |
+| `probeTimeoutMs` | `600000` | 单条挑战（一次请求）的超时：10 分钟 |
+| `accountBudgetMs` | `3600000` | 单账号总预算，重试也算在内：60 分钟；超了就不再重试，记为无法诊断 |
 | `pauseMs` | `3000` | 账号之间的间隔 |
 | `slots` | `[0,3,6,9,12,15,18,21]` | 本地时区的整点；第一个是「全量」时段 |
 | `catchUpMinutes` | `120` | 整三小时时段的补跑窗口 |
