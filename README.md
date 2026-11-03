@@ -100,7 +100,9 @@ systemctl --user list-timers 'codex-route-monitor*'
   ~/.config/magpie/plugins/node_modules/codex-route-monitor/bin/codex-route-monitor.mjs uninstall-schedule
 ```
 
-## 手动测试（1.4.0）
+## 手动测试（1.4.x）
+
+1.4.1 修复旧版检测记录缺少进度字段时误显示“无可测账号”的问题：按已有结果补齐显示计数，不重跑检测，也不改写原记录。
 
 在 Magpie 左侧 **插件 → 路由检测**打开独立页面：
 

@@ -34,7 +34,8 @@
     current = state;
     const report = state.report, run = report?.lastRun;
     const p = report?.progress || run?.progress || {};
-    const done = Math.max(0, Number(p.completed ?? run?.accounts?.length ?? 0));
+    const completedOutcomes = !state.running && run?.status === 'done' ? (run.accounts?.length || 0) : 0;
+    const done = Math.max(completedOutcomes, Number(p.completed ?? 0));
     const total = Math.max(done, Number(p.total ?? done));
     $('all').disabled = $('enabled').disabled = state.busy || !report || !!state.error;
     $('all').setAttribute('aria-pressed', String(state.running && (report?.active?.scope || run?.scope) === 'all'));

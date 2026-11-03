@@ -159,6 +159,25 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ['chromium',
         assert.deepEqual(forbidden, []); assert.deepEqual(errors, []); assert.deepEqual(await page.evaluate(() => fixtureErrors), []);
       } finally { await context.close(); }
     });
+    await t.test('legacy completed records use their two successful accounts, while truly empty runs stay empty', async () => {
+      for (const lang of ['en', 'zh']) {
+        fixture.reset();
+        const legacy = { phase: 'done', completed: 0, total: null };
+        state.progress = { ...legacy };
+        state.run = { id: 'legacy-v1.2', scope: 'all', status: 'done', accounts: [{ verdict: 'ok' }, { verdict: 'ok' }], progress: { ...legacy } };
+        const { context, page, frame, errors } = await open(browser, fixture, { lang });
+        try {
+          assert.equal(await frame.locator('#status').textContent(), lang === 'en' ? 'Complete' : '已完成', 'legacy zero/null counters must not conceal two completed account results');
+          assert.match(await frame.locator('#details').textContent(), lang === 'en' ? /Normal 2/ : /正常 2/);
+          state.progress = { phase: 'done', completed: 0, total: 0 };
+          state.run = { ...state.run, accounts: [], progress: { ...state.progress } };
+          await refresh(page, frame);
+          await text(frame.locator('#status'), lang === 'en' ? 'No accounts' : '无可测账号');
+          assert.equal(await frame.locator('#details').textContent(), '');
+          assert.deepEqual(state.starts, []); assert.deepEqual(errors, []);
+        } finally { await context.close(); }
+      }
+    });
     await t.test('503 and disconnected HTTP automatically resume polling without a new scan', async () => {
       fixture.reset(); const { context, page, frame, errors } = await open(browser, fixture);
       try {
