@@ -1,0 +1,28 @@
+{
+  "upstream": "https://github.com/yetone/magpie",
+  "pluginVersion": "1.3.1",
+  "goVersion": "1.26.8",
+  "patches": [
+    {
+      "version": "0.1.2522",
+      "base": "f435aadbf387fab1347b239d0477df2f2328ca27",
+      "file": "magpie-0.1.2522-manual-panels.patch",
+      "sha256": "baf0080ea0bbdb69e457d5dac43d85a437bab9ca4a7165c537ab0341f29a26e2",
+      "bytes": 53294
+    },
+    {
+      "version": "0.1.2523",
+      "base": "fb3942ee67a719a4e4733cdb632873defd42f28b",
+      "file": "magpie-0.1.2523-manual-panels.patch",
+      "sha256": "baf0080ea0bbdb69e457d5dac43d85a437bab9ca4a7165c537ab0341f29a26e2",
+      "bytes": 53294
+    },
+    {
+      "version": "0.1.2605",
+      "base": "7d1f2ecba35bdaee25ea1b131a7f294900c4dcd8",
+      "file": "magpie-0.1.2605-manual-panels.patch",
+      "sha256": "3fdf8aa6561f3e797bb0e00ccfcca835ac1f8c634e6d611ed492ae08692143dd",
+      "bytes": 55211
+    }
+  ]
+}

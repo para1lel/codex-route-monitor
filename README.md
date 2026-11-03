@@ -52,7 +52,7 @@ lock ──▶ magpie healthcheck ──▶ accounts + pool ──▶ for each a
 
 ## 安装
 
-插件已发布为公开仓库，标签 `magpie-plugin`。装到本机和 192.168.80.105 的 magpie：
+插件发布于公开仓库，标签 `magpie-plugin`。安装到 Magpie：
 
 ```bash
 magpie plugin add github:para1lel/codex-route-monitor
@@ -99,6 +99,35 @@ systemctl --user list-timers 'codex-route-monitor*'
 ~/.nvm/versions/node/v24.18.0/bin/node \
   ~/.config/magpie/plugins/node_modules/codex-route-monitor/bin/codex-route-monitor.mjs uninstall-schedule
 ```
+
+## 手动测试（1.3.1）
+
+在 Magpie 的 **供应商 → Codex → 账号弹窗**中，会显示原生表单行“路由检测”：
+
+- **测试全部**：立即测试所有 Codex 账号，包含已停用账号。
+- **测试已启用**：立即测试当前账号池中已启用的账号；订阅整体停用时不临时打开订阅。
+- 无独立卡片边框和插件名，按钮、配色与表单一致；结果和时间压缩为一行。完整时间及检测说明可悬停查看，刷新使用图标按钮。
+- 测试中显示账号和挑战进度，两个启动按钮暂时禁用；关闭弹窗不会停止后台任务，重新打开可继续查看。
+- 已有手动或定时扫描运行时，不会再启动一轮。启动失败和中断会明确显示，可重新发起。
+- 两个按钮都运行**真实检测**，消耗对应账号额度，并沿用现有规则启停账号：Luna 判风控则停用，正常则启用，无法诊断则保持原状。
+- 手动测试不占用定时任务的时段记录，不改变原来的检测时间与判定标准。
+
+此入口需要配套的 Magpie 核心小补丁：账号弹窗的 provider 面板挂点、`panels.providers` 显示过滤，以及 `magpie.tools` 显式声明的**本插件自有工具**调用桥。未经修补的 Magpie 不能只靠升级插件显示/调用这两个按钮；CLI/MCP 工具仍可单独使用。
+
+[核心补丁与构建说明](<patches/README.md>) 提供 0.1.2522、0.1.2523、0.1.2605 的精确版本补丁及上游许可证。使用与现有版本、平台和架构匹配的补丁与构建方式，**不为此功能降级 Magpie**；升级或替换为官方原版可执行文件会覆盖核心支持，需要重新适配。补丁不会修改现有账号、路由组或定时配置。
+
+插件界面不直接访问网络、主窗口 DOM 或登录凭据。工具名由 manifest 声明，主窗口绑定插件 spec，服务端再次核验工具归属；状态返回不包含网关密钥，界面仅显示账号数量与结果汇总，不显示邮箱。
+
+### 手动入口测试
+
+```bash
+npm ci
+npm test
+npx playwright install chromium webkit
+npm run test:ui
+```
+
+浏览器用隔离的假工具响应验证两种按钮、重复点击、进度/完成/中断/启动失败、五种语言和窄屏；不会调用真实账号。核心桥的权限边界测试与浏览器整合测试位于配套 Magpie checkout 中。
 
 ## 验证
 

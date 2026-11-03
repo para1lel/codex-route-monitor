@@ -6,28 +6,12 @@
 // its start and after every plugin change; a plugin host that restarts starts
 // the schedule again, and the scan lock keeps two runs from overlapping.
 
-import { spawn } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { logLine, loadConfig, stateDir } from "./lib/config.mjs";
+import { logLine, loadConfig } from "./lib/config.mjs";
 import { statusReport } from "./lib/core.mjs";
-import { CLI, ensureRunner, schedulePlan, startScheduler } from "./lib/schedule.mjs";
+import { createManualController } from "./lib/manual.mjs";
+import { ensureRunner, schedulePlan, startScheduler } from "./lib/schedule.mjs";
 
-const HERE = path.dirname(fileURLToPath(import.meta.url));
-
-function startScanInBackground({ scope, dryRun }) {
-  const args = [CLI, "scan", "--scope", scope, "--trigger", "tool"];
-  if (dryRun) args.push("--dry-run");
-  const child = spawn(process.execPath, args, {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-    cwd: HERE,
-    env: { ...process.env },
-  });
-  child.unref();
-  return child.pid ?? null;
-}
+const manual = createManualController();
 
 export default async function codexRouteMonitor(input, options) {
   const config = loadConfig();
@@ -47,7 +31,7 @@ export default async function codexRouteMonitor(input, options) {
     tool: {
       codex_route_scan: {
         description:
-          "Start a Codex account routing scan in the background: probe each account with ModelTrace's random-number challenge through codex, attribute the model that answered, and put accounts held back (Luna) out of use. Returns at once; read the result with codex_route_status.",
+          "Start a Codex account routing scan in the background: probe each account with ModelTrace's random-number challenge through codex, attribute the model that answered, and put accounts held back (Luna) out of use. Returns started or busy at once; read progress and results with codex_route_status.",
         args: {
           type: "object",
           properties: {
@@ -64,18 +48,7 @@ export default async function codexRouteMonitor(input, options) {
           },
           required: [],
         },
-        execute: async (args = {}) => {
-          const scope = args.scope === "all" ? "all" : "enabled";
-          const pid = startScanInBackground({ scope, dryRun: args.dry_run === true });
-          return {
-            started: true,
-            scope,
-            dryRun: args.dry_run === true,
-            pid,
-            stateDir: stateDir(),
-            note: "the scan runs as its own process; codex_route_status shows what came of it",
-          };
-        },
+        execute: manual.start,
       },
       codex_route_status: {
         description:

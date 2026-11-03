@@ -4,3 +4,5 @@
 *.js text eol=lf
 *.sh text eol=lf
 *.ps1 text eol=crlf
+# Unified diffs contain required context prefixes; git apply validates their source whitespace.
+patches/*.patch text eol=lf -whitespace

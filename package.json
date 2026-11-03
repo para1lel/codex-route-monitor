@@ -1,6 +1,6 @@
 {
   "name": "codex-route-monitor",
-  "version": "1.2.0",
+  "version": "1.3.1",
   "description": "Codex account routing monitor for magpie: probes every Codex account through codex exec with ModelTrace's random-number challenge, attributes the model that answered, and enables or disables the account in magpie.",
   "type": "module",
   "main": "index.js",
@@ -16,10 +16,29 @@
     "lib/",
     "data/",
     "scripts/",
+    "ui/",
+    "patches/",
     "README.md",
     "LICENSE",
     "NOTICE"
   ],
+  "magpie": {
+    "tools": ["codex_route_scan", "codex_route_status"],
+    "panels": [
+      {
+        "slot": "provider",
+        "providers": ["codex"],
+        "title": "Route check",
+        "titles": {
+          "zh": "路由检测",
+          "zh-TW": "路由檢測",
+          "ja": "ルート検査",
+          "de": "Routenprüfung"
+        },
+        "file": "ui/panel.html"
+      }
+    ]
+  },
   "keywords": [
     "magpie-plugin",
     "magpie",
@@ -34,6 +53,10 @@
   "license": "MIT",
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
+    "test:ui": "node --test \"test/ui/*.test.cjs\"",
     "parity": "node test/parity/run-parity.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
   }
 }

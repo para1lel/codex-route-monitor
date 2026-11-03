@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Route check</title>
+  <style>
+    html, body { background: transparent; }
+    body { margin: 0; padding: 0; }
+    [hidden] { display: none !important; }
+    .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+    button { min-height: 28px; padding: 3px 10px; background: transparent; border-radius: 6px; }
+    #refresh { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; border-color: transparent; color: var(--magpie-muted); }
+    #refresh:hover { color: var(--magpie-fg); }
+    #refresh svg { width: 14px; height: 14px; }
+    .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 6px; color: var(--magpie-muted); font-size: 12px; line-height: 1.45; }
+    #status, #results, #updated { margin: 0; overflow-wrap: anywhere; }
+    #results[data-tone="risk"] { color: var(--magpie-amber); }
+    #results[data-tone="error"], #status[data-error="true"], #fatal { color: var(--magpie-red); }
+    #updated { color: var(--magpie-faint, var(--magpie-muted)); font-variant-numeric: tabular-nums; }
+    #details { margin: 4px 0 0; color: var(--magpie-muted); font-size: 12px; overflow-wrap: anywhere; }
+    progress { display: block; width: 100%; height: 3px; margin-top: 6px; accent-color: var(--magpie-accent); }
+    #fatal { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+  </style>
+</head>
+<body>
+  <main id="monitor" hidden>
+    <div class="actions">
+      <button type="button" id="test-all" disabled>Test all</button>
+      <button type="button" id="test-enabled" disabled>Test enabled</button>
+      <button type="button" id="refresh" aria-label="Refresh" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 7v5h-5"/><path d="M20 12a8 8 0 1 0-2.35 5.65"/></svg>
+      </button>
+    </div>
+    <div class="meta">
+      <p id="status" role="status" aria-live="polite"></p>
+      <p id="results" hidden></p>
+      <time id="updated" hidden></time>
+    </div>
+    <progress id="progress" max="1" value="0" hidden></progress>
+    <p id="details" hidden></p>
+  </main>
+  <p id="fatal" role="alert" hidden></p>
+  <script src="_magpie/bridge.js"></script>
+  <script src="panel-controller.js"></script>
+  <script src="panel.js"></script>
+</body>
+</html>

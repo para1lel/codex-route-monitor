@@ -1,0 +1,915 @@
+diff --git a/docs/subsystems/plugin-runtime.md b/docs/subsystems/plugin-runtime.md
+index b70a68b9c7ba65b235ea68b43fb13981aa59b49d..b89f5acc3658351ca81e0a6c573e9f0e24470865 100644
+--- a/docs/subsystems/plugin-runtime.md
++++ b/docs/subsystems/plugin-runtime.md
+@@ -282,12 +282,21 @@ page of its own. Both come from package.json and are read by
+ `plugin.Window` ([`page.go`](../../internal/plugin/page.go)); neither
+ starts a Bun host.
+ 
+-- **Panels.** `magpie.panels: [{slot, file, title}]`, at most 8 a plugin
++- **Panels.** `magpie.panels: [{slot, file, title, providers?}]`, at most 8 a plugin
+   (`maxPanels`), each `slot` one of `plugin.PanelSlots`: `agents` (the end
+   of the Agents page), `usage` (the end of Usage's Overview), `settings` (a
+   Plugins tab in Settings, shown only while a panel is in it, in the tab
+   strip and in the sidebar of a wide window) and `provider` (each saved
+-  provider's editor, told `{provider: {id, name}}`). `file` is an .html in
++  provider's editor, including signed-in account providers, told
++  `{provider: {id, name}}`). For the `provider` slot, optional
++  `providers: ["codex"]` limits the panel to those exact provider ids,
++  before creating its heading or frame. Omitted means all providers;
++  an explicitly empty or malformed list matches none. Names are trimmed
++  and deduplicated. Other slots ignore the filter. In a provider editor,
++  each panel is a native label/control field pair in the editor's existing
++  responsive grid, with no card border or package-name subtitle; hidden
++  slots occupy no grid cell. Other slots keep their titled cards.
++  `file` is an .html in
+   the plugin's folder (`plugin.FileIn`). `GET /api/plugin-panels` lists an
+   on plugin's panels in plugins.json order, each with a token of its own
+   (`pageToken(spec + "\x00panel\x00" + i)`), served under the same policy
+@@ -302,6 +311,29 @@ starts a Bun host.
+   around it and the panels beside it go on. The size watch's own
+   "ResizeObserver loop" notice, which WebKit gives a sandboxed page as a
+   bare "Script error.", is not a throw.
++- **Calling own tools.** Optional `magpie.tools: ["check_accounts"]` is an
++  explicit allowlist shared by the plugin's page and panels (`WindowSpec.Tools`).
++  These are the host's own tool names (`[A-Za-z0-9_-]`, 1..48 characters),
++  trimmed and deduplicated, not MCP-prefixed names or a blanket `tools:own`
++  permission. A malformed list grants nothing. `/api/plugin-pages` and
++  `/api/plugin-panels` include `tools: []` when no tool is granted;
++  panels also carry `providers` (`null` for unfiltered, `[]` for none).
++  `await magpie.tools.call(name, args = {})` returns `{text}`. The frame
++  posts `tools.call`; the window identifies it by `ev.source`, checks its
++  bound entry's allowlist, and posts `{spec, name, args}` to
++  `POST /api/plugin-pages/tool`, ignoring any spec claimed by the frame.
++  The server rechecks an on plugin's valid window manifest and declaration,
++  then requires `plugin.Tools()` to list the name under that exact spec.
++  It respects `gwtool.Served(gwtool.PluginTools)` and never resolves another
++  plugin's tool by name. Arguments must be a JSON object of at most 64 KiB;
++  the whole request is bounded at 128 KiB. The tool runs with context agent
++  `plugin-page`, under the host's existing timeout; its encoded `{text}`
++  reply is at most 1 MiB. Denials are 403; invalid input, host errors and
++  oversized replies are errors, not successful text. Tool errors are bounded
++  too. Tests replace `pageTools`/`pageRunTool`, so no host or network is needed.
++  This adds no iframe network access and leaves CSP and `noFramedAPI` intact.
++  The GUI own-tool operation has the existing `magpie tool` CLI counterpart
++  ([`tool_cli.go`](../../internal/cli/tool_cli.go)); CLI calls use the MCP name.
+ - **Titles and look.** `magpie.page.titles` and a panel's `titles`, an
+   object of language code to title (`plugin.titles`: trimmed, empty ones
+   and a non-object dropped), name the tab and the panel's heading in the
+diff --git a/docs/subsystems/plugin-tools.md b/docs/subsystems/plugin-tools.md
+index 9ce5fe4f5e1030f0fc9dead6ac748cce9b22d482..3609569a70cb87faba1a4367cab52cc293cec602 100644
+--- a/docs/subsystems/plugin-tools.md
++++ b/docs/subsystems/plugin-tools.md
+@@ -12,6 +12,7 @@ A community plugin (an OpenCode plugin, an npm package in the plugin host) can g
+ | Serve | `tools/list` names each tool `<plugin>_<tool>`: the plugin's short name, as its Plugins row names it (`plugin.ShortName`, which takes off the scope and one leading `middleware-`, `opencode-`, `tools-`, `page-` or `agent-`: opencode-weather-tools → weather-tools, @magpie-community/tools-calc → calc; a plugin added from a folder, the folder's name), at most 24 characters, in `[A-Za-z0-9_-]`, then the tool. Each name is at most 64 characters, and a name two would share gets `_2`, `_3`. `tools/call` runs one; an unknown name is error -32602. It is guarded as the search MCP server is (`serveMCP`: a web page's request is refused, a remote one needs a key), with a 4 MiB body. | [`tools_mcp.go`](../../internal/gateway/tools_mcp.go) |
+ | Gate | `plugins/tools` ("Plugin tools", requires `gateway`, Essential) serves `gwtool.PluginTools`. `InUse` is `plugin.ToolsOn`, so it is on while a plugin that is on gives a tool. The gateway's `KeepFresh` watches `plugin-tools.json` too. | [`plugins/tools`](../../plugins/tools/tools.go), [`gwtool.go`](../../internal/gwtool/gwtool.go), [`gateway.go`](../../internal/gateway/gateway.go) |
+ | GUI | Each Installed row of a plugin that is on and gives tools lists them by their MCP names, each with its description on hover, plus a button that copies the server's address (`mcpAddress`). A plugin of tools alone wears the Tools chip, not Provider. Discover lists `kind: "tools"` market entries under Tools for agents. | `pluginEntryJSON.Tools` in [`plugins.go`](../../internal/gui/plugins.go); `toolsLine`, `kindOf` and `KINDS.tl` in `plugins.js` |
++| Window own-tool bridge | A page or panel can call only its plugin's explicitly allowlisted `magpie.tools` names with `magpie.tools.call(name, args)`; the sandbox stays off the network. The server rechecks the active window declaration, live tool ownership and `gwtool.PluginTools`. See [Plugin runtime, P5](plugin-runtime.md#p5-panels-in-magpies-own-pages-and-pages-that-replace-one). | [`pluginpage_tools.go`](../../internal/gui/pluginpage_tools.go) |
+ | CLI | `magpie plugin` lists a plugin's tools by the same MCP names, and a plugin's page by its title and what it may read. The host loads no plugin that is off, so one lists no tools. | `toolsLine`, `pageLine` in [`plugins_cli.go`](../../internal/cli/plugins_cli.go) |
+ | User docs | How to write a tool and add the address to an agent | [usemagpie.ai/docs/plugins#tools](https://usemagpie.ai/docs/plugins#tools) (`site/public/docs/*plugins.html`) |
+ 
+diff --git a/internal/gui/assets/app.css b/internal/gui/assets/app.css
+index 18e904f2670b417f8a1d4b24592397b34f1886f5..90fc7f4b26e6819296a8fc0d996f3c97db188634 100644
+--- a/internal/gui/assets/app.css
++++ b/internal/gui/assets/app.css
+@@ -3160,7 +3160,7 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
+ .editor .icon-pick .icon-grid .ic { width: 18px; height: 18px; }
+ .editor .ehead b { font-weight: 600; }
+ .editor .ehead .note { font-size: 12px; color: var(--muted); }
+-.editor label { font-size: 12px; color: var(--fg-2); text-align: right; padding-top: 5px; }
++.editor label, .editor .plugin-slot[data-slot="provider"] .row-head { font-size: 12px; color: var(--fg-2); text-align: right; padding-top: 5px; }
+ .editor label.by-list { padding-top: 11px; }
+ .editor .hint { font-size: 11px; color: var(--fg-2); margin-top: 4px; }
+ /* a provider's own proxy (#237): the address beside the options, its room
+@@ -3650,6 +3650,20 @@ body:not(.side-nav) #view-settings .set-head.stuck::before { box-shadow: 0 1px 0
+ .plugin-panel-frame { flex: none; min-height: 0; height: 48px; }
+ .plugin-panel-broke { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 12px 14px; }
+ .plugin-panel-broke .note { flex: 1 1 200px; color: var(--muted); overflow-wrap: anywhere; }
++/* Provider panels are native field pairs in the editor's existing grid,
++   not an extra grid cell that shifts every field after them. Keep hidden
++   slots out of the grid, including when no provider filter matches. */
++.editor .plugin-slot[data-slot="provider"]:not([hidden]),
++.editor .plugin-slot[data-slot="provider"]:not([hidden]) > .plugin-panel:not([hidden]) { display: contents; }
++.editor .plugin-slot[data-slot="provider"] .row-head { display: block; height: auto; min-height: auto; margin: 0; min-width: 0; }
++.editor .plugin-slot[data-slot="provider"] .row-head .label { font: inherit; color: inherit; letter-spacing: normal; text-transform: none; }
++.editor .plugin-slot[data-slot="provider"] .row-head .note { display: none; }
++.editor .plugin-slot[data-slot="provider"] .plugin-panel-body { min-width: 0; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; overflow: visible; }
++/* Match the bridge's canvas scheme so a transparent plugin document stays
++   transparent instead of the browser inserting an opaque dark canvas. */
++.editor .plugin-slot[data-slot="provider"] .plugin-panel-frame { min-width: 0; color-scheme: light; }
++:root[data-theme="dark"] .editor .plugin-slot[data-slot="provider"] .plugin-panel-frame { color-scheme: dark; }
++@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .editor .plugin-slot[data-slot="provider"] .plugin-panel-frame { color-scheme: dark; } }
+ /* a built-in page a plugin's page replaces steps aside in the sidebar */
+ #nav button[data-replaced] { display: none !important; }
+ img.nav-ic { border-radius: 3px; object-fit: contain; }
+@@ -4040,7 +4054,7 @@ body.panel .modal { padding: 16px 12px; }
+   body.web textarea, body.web select { font-size: 16px; min-height: 44px; }
+   body.web .modal { padding: max(8px, env(safe-area-inset-top)) max(8px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)); }
+   body.web .modal .editor.framed > .ebody, body.web .editor { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px; }
+-  body.web .editor label { text-align: left; padding-top: 8px; }
++  body.web .editor label, body.web .editor .plugin-slot[data-slot="provider"] .row-head { text-align: left; padding-top: 8px; }
+   body.web .editor .segs { max-width: 100%; flex-wrap: wrap; }
+   body.web .editor .proxy-row { flex-wrap: wrap; }
+   body.web .editor .proxy-row input.proxy-url { flex-basis: 100%; }
+diff --git a/internal/gui/assets/app.js b/internal/gui/assets/app.js
+index 984092ba03f9fed8f220f55197f6a9f083c89bb8..db0be60cda706280c08dd511302ac09db6894abb 100644
+--- a/internal/gui/assets/app.js
++++ b/internal/gui/assets/app.js
+@@ -9318,6 +9318,7 @@ function drawEditor(p, presetID) {
+       acct.append(icon(a.agentIcon), el("span", "n", a.user), hideAccounts.eye(a.user, p.id), el("span", "plan", accountPlan(a)));
+       ed.append(...field(t("Account"), acct, t("{agent}'s sign-in, read from its own files. Sign out there and this provider goes away.", { agent: a.agentName })));
+     }
++    const slot = magpie.slot?.("provider", { provider: { id: p.id, name: p.name || p.id } }); if (slot) ed.append(slot);
+     ed.append(...field(t("Models"), renderModels(p), ""));
+     if (p.drawIds?.length) ed.append(...renderDrawers(p));
+     // a subscription's window too: Codex's backend says 272K for models
+diff --git a/internal/gui/assets/pluginpages.js b/internal/gui/assets/pluginpages.js
+index 0b943f8b3b08df498724aa3635b837766813c9f2..4eb5890c527f044f2f6b1ff75424ca60757c3c65 100644
+--- a/internal/gui/assets/pluginpages.js
++++ b/internal/gui/assets/pluginpages.js
+@@ -1,20 +1,7 @@
+-// A community plugin's own page in the window (docs/subsystems/
+-// plugin-runtime.md, P4): package.json's magpie.page, in a tab of the
+-// sidebar's Plugins group, after the built-in pages. The page runs in a
+-// frame sandboxed to scripts alone, in an origin of its own: it has no
+-// way to the window, to magpie's API (apiFramed) or to the network (its
+-// policy, pluginpage.go). What it asks of the window comes by message,
+-// from that frame only, and the window answers only what the page may:
+-// the theme, its own options, and the reads its package declared
+-// (magpie.permissions), which /api/plugin-pages/read checks again.
+-// A page that throws, or never says hello, shows the kernel's "This
+-// page stopped working" with its Try again.
+-//
+-// Panels (magpie.panels, P5) are framed the same way in a page's
+-// .plugin-slot, as tall as they draw, and one that breaks says so in its
+-// place. A page may take a built-in one's place (magpie.page.replaces),
+-// and its actions (magpie.actions, P6) are row menu items that open it:
+-// plugin-runtime.md says the rest.
++// Community pages, panels and actions: docs/subsystems/plugin-runtime.md (P4-P6).
++// Sandboxed frames call only declared reads/tools and their own options,
++// bound by ev.source and rechecked by the API. CSP denies network and /api.
++
+ (() => {
+   if (mode !== "window") return;
+   // how long a page has to say hello before it is taken as broken
+@@ -138,6 +125,15 @@
+         if (!o || typeof o !== "object" || Array.isArray(o)) throw new Error(t("A page's options are an object"));
+         return api("plugin-pages/options", { spec: e.spec, options: o });
+       }
++      case "tools.call": {
++        const name = String(m.params?.name || "");
++        // The frame never supplies its spec: its bound entry does. The
++        // server rechecks both the declaration and live tool ownership.
++        if (!e.tools?.includes(name)) throw new Error(t("No such call: {what}", { what: name }));
++        const args = m.params?.args === undefined ? {} : m.params.args;
++        if (!args || typeof args !== "object" || Array.isArray(args)) throw new Error(t("No such call: {what}", { what: m.method }));
++        return api("plugin-pages/tool", { spec: e.spec, name, args });
++      }
+       case "read": {
+         const name = String(m.params?.name || "");
+         // what its package didn't declare is refused here, and again by
+@@ -346,11 +342,11 @@
+   // changed, so a panel already open goes on as it is
+   function fill(box) {
+     const name = box.dataset.slot;
+-    const list = panelList.filter((e) => e.slot === name);
+-    const sig = list.map((e) => e.key + " " + e.url + " " + titled(e)).join("|");
++    const context = box.pluginContext || {};
++    const list = panelList.filter((e) => e.slot === name && (name !== "provider" || !Array.isArray(e.providers) || e.providers.includes(context.provider?.id)));
++    const sig = list.map((e) => e.key + " " + e.url + " " + titled(e) + " " + JSON.stringify(e.tools || [])).join("|");
+     if (box.dataset.sig === sig && box.childElementCount === list.length) return;
+     box.dataset.sig = sig;
+-    const context = box.pluginContext || {};
+     const parts = list.map((e) => {
+       const sec = el("section", "plugin-panel");
+       sec.dataset.panel = e.key;
+diff --git a/internal/gui/pagebridge.js b/internal/gui/pagebridge.js
+index 93c7ffa74a18c1f917d6212245db3a8d9e9975a3..e574c928276a09ce077d5df5e273f9e5f0053c1e 100644
+--- a/internal/gui/pagebridge.js
++++ b/internal/gui/pagebridge.js
+@@ -8,6 +8,9 @@
+ //   magpie.onTheme(fn)            fn(theme) on each change of it
+ //   await magpie.options.get()    the plugin's own options (plugins.json)
+ //   await magpie.options.set(o)   sets them, and answers with them
++//   await magpie.tools.call(name, args = {})
++//                                 {text} from an explicitly declared own tool
++//                                 (package.json's magpie.tools)
+ //   await magpie.read(name, p)    a read its package.json's
+ //                                 magpie.permissions declares
+ //   magpie.context                where a panel is (P5): { provider: {
+@@ -128,6 +131,9 @@
+       set: (options) => call("options.set", { options }),
+     },
+     read: (name, params) => call("read", { name, params }),
++    tools: {
++      call: (name, args = {}) => call("tools.call", { name, args }),
++    },
+   };
+   api.ready = call("hello").then(({ context, service, visible, ...theme }) => {
+     api.theme = theme;
+diff --git a/internal/gui/pluginpage.go b/internal/gui/pluginpage.go
+index e2d1fd67e5cf7c9ac96deff1ffe797eca1f4ce4d..080448e75fe76fd78b813d8a007f35eaf48a558c 100644
+--- a/internal/gui/pluginpage.go
++++ b/internal/gui/pluginpage.go
+@@ -79,6 +79,7 @@ type pluginPage struct {
+ 	// plugin's in plugins.json's order to ask for it
+ 	Replaces string   `json:"replaces,omitempty"`
+ 	Reads    []string `json:"reads"` // what it may read, of plugin.PageReads
++	Tools    []string `json:"tools"` // its own tools explicitly granted by magpie.tools
+ 	// Actions are its items in magpie's menus (plugin.ActionSpec); each
+ 	// opens this page
+ 	Actions []pluginAction `json:"actions,omitempty"`
+@@ -116,10 +117,13 @@ type pluginPanel struct {
+ 	Titles map[string]string `json:"titles,omitempty"`
+ 	URL    string            `json:"url"`   // the panel, under pluginPagePrefix
+ 	Reads  []string          `json:"reads"` // what it may read, of plugin.PageReads
+-	token  string
+-	dir    string
+-	file   string
+-	hosted bool
++	Tools  []string          `json:"tools"`
++	// Providers is nil (all providers), or an explicit filter, including [].
++	Providers []string `json:"providers"`
++	token     string
++	dir       string
++	file      string
++	hosted    bool
+ }
+ 
+ // pageKeyChars are what a window page's key can't have
+@@ -151,6 +155,10 @@ func windowParts() (pages []pluginPage, panels []pluginPanel) {
+ 			key = fmt.Sprintf("%s-%d", k, n)
+ 		}
+ 		seen[key] = true
++		tools := w.Tools
++		if tools == nil {
++			tools = []string{}
++		}
+ 		reads := w.Reads
+ 		if reads == nil {
+ 			reads = []string{}
+@@ -158,7 +166,7 @@ func windowParts() (pages []pluginPage, panels []pluginPanel) {
+ 		if spec := w.Page; spec != nil {
+ 			tok := pageToken(e.Spec)
+ 			rel, _ := filepath.Rel(spec.Dir, spec.File)
+-			p := pluginPage{Spec: e.Spec, Name: name, Key: key, Title: spec.Title, Titles: spec.Titles, Reads: reads, token: tok, dir: spec.Dir,
++			p := pluginPage{Spec: e.Spec, Name: name, Key: key, Title: spec.Title, Titles: spec.Titles, Reads: reads, Tools: tools, token: tok, dir: spec.Dir,
+ 				URL: pluginPagePrefix + tok + "/" + filepath.ToSlash(rel), file: filepath.ToSlash(rel), hosted: !only, options: e.Options, KeepAlive: spec.KeepAlive}
+ 			if !only {
+ 				p.service = spec.Service
+@@ -186,7 +194,7 @@ func windowParts() (pages []pluginPage, panels []pluginPanel) {
+ 		for i, spec := range w.Panels {
+ 			tok := pageToken(e.Spec + "\x00panel\x00" + strconv.Itoa(i))
+ 			rel, _ := filepath.Rel(spec.Dir, spec.File)
+-			p := pluginPanel{Spec: e.Spec, Name: name, Key: fmt.Sprintf("%s-%d", key, i), Slot: spec.Slot, Title: spec.Title, Titles: spec.Titles, Reads: reads,
++			p := pluginPanel{Spec: e.Spec, Name: name, Key: fmt.Sprintf("%s-%d", key, i), Slot: spec.Slot, Title: spec.Title, Titles: spec.Titles, Reads: reads, Tools: tools, Providers: spec.Providers,
+ 				token: tok, dir: spec.Dir, URL: pluginPagePrefix + tok + "/" + filepath.ToSlash(rel), file: filepath.ToSlash(rel), hosted: !only}
+ 			if p.Title == "" {
+ 				p.Title = cmp.Or(plugin.InstalledName(e.Spec), plugin.ShortName(name))
+@@ -397,6 +405,7 @@ func apiFramed(r *http.Request) bool {
+ // service served through this server (servePageService), since only there
+ // can 127.0.0.1 be another computer than this one.
+ func pluginPageRoutes(mux *http.ServeMux, web bool) {
++	mux.HandleFunc("POST /api/plugin-pages/tool", pluginPageTool)
+ 	mux.HandleFunc(pluginPagePrefix, func(rw http.ResponseWriter, r *http.Request) { servePluginPage(rw, r, web) })
+ 	mux.HandleFunc("GET /api/plugin-pages", func(rw http.ResponseWriter, r *http.Request) {
+ 		out := pluginPages()
+diff --git a/internal/gui/tests/plugin-panels.test.cjs b/internal/gui/tests/plugin-panels.test.cjs
+index 2c93513724f6687ca812c1e94d23faa13a9dd5d8..a52d8e4b1e78a5d9435f50da93486417c42c63a3 100644
+--- a/internal/gui/tests/plugin-panels.test.cjs
++++ b/internal/gui/tests/plugin-panels.test.cjs
+@@ -21,7 +21,7 @@ const assets = path.resolve(__dirname, "../assets");
+ const example = path.resolve(__dirname, "../testdata/panel-plugin/ui");
+ const bridge = path.resolve(__dirname, "../pagebridge.js");
+ 
+-const NOTES = "1".repeat(32), SPEND = "2".repeat(32), SETS = "3".repeat(32), TALL = "4".repeat(32), BROKEN = "5".repeat(32), LIB = "6".repeat(32);
++const NOTES = "1".repeat(32), SPEND = "2".repeat(32), SETS = "3".repeat(32), TALL = "4".repeat(32), BROKEN = "5".repeat(32), LIB = "6".repeat(32), SCAN = "7".repeat(32);
+ const panel = (tok, i, slot, title, file, name = "magpie-provider-notes", reads = ["usage:summary"]) => ({
+   spec: "/x/" + name, name, key: `plugin-${name.replace("magpie-", "")}-${i}`, slot, title, reads, url: `/_magpie/plugin/${tok}/${file}`,
+ });
+@@ -37,6 +37,7 @@ const pages = [{ spec: "/x/my-library", name: "my-library", key: "plugin-my-libr
+ const TALL_HTML = `<!doctype html><meta charset="utf-8"><style>body{margin:0;padding:0}</style><script src="_magpie/bridge.js"></script><div id="box" style="height:180px">tall</div>`;
+ const BROKEN_HTML = `<!doctype html><meta charset="utf-8"><script src="_magpie/bridge.js"></script><script src="app.js"></script><p id="ok">drawn</p>`;
+ const LIB_HTML = `<!doctype html><meta charset="utf-8"><script src="_magpie/bridge.js"></script><p id="mine">my library</p>`;
++const SCAN_HTML = `<!doctype html><meta charset="utf-8"><script src="_magpie/bridge.js"></script><style>html,body{background:transparent}body{margin:0;padding:0;min-width:0}.tools{display:flex;flex-wrap:wrap;gap:6px}button{font-size:12px}p{font-size:11px;color:var(--magpie-muted);margin:5px 0 0;overflow-wrap:anywhere}</style><div class="tools"><button>Test all</button><button>Test enabled</button><button aria-label="Refresh">↻</button></div><p>Ready</p>`;
+ 
+ const providerList = [{ id: "openai", name: "OpenAI", icon: "generic", host: "api.openai.com", chat: "https://api.openai.com/v1", models: [] }]
+   .map((p) => ({ responses: "", anthropic: "", agents: [], fallback: [], headers: {}, key: { set: false }, keyList: [], ready: true, ...p }));
+@@ -46,13 +47,17 @@ function server(lang, seen, opts) {
+     const req = route.request();
+     const url = new URL(req.url());
+     const json = (data) => route.fulfill({ json: data });
+-    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:${JSON.stringify(lang)},theme:"light",web:false};` });
++    if (url.pathname === "/boot.js") return route.fulfill({ contentType: "text/javascript", body: `window.bootPrefs = {lang:${JSON.stringify(lang)},theme:${JSON.stringify(opts.theme || "light")},web:${!!opts.web}};` });
+     if (url.pathname === "/wails/runtime.js") return route.fulfill({ contentType: "text/javascript", body: "export const Window = {};" });
+-    if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: "light" } });
+-    if (url.pathname === "/api/providers") return json({ providers: providerList, presets: [], excluded: [], gateway: { running: true, window: true }, plugins: [] });
++    if (url.pathname === "/api/state") return json({ agents: [], profiles: [], settings: { lang, theme: opts.theme || "light" } });
++    if (url.pathname === "/api/providers") return json({ providers: opts.providers || providerList, presets: [], excluded: [], gateway: { running: true, window: true }, plugins: [] });
+     if (url.pathname === "/api/groups") return json({ groups: [], pools: [] });
+     if (url.pathname === "/api/plugin-pages") return json(opts.pages);
+     if (url.pathname === "/api/plugin-panels") return json(opts.panels);
++    if (url.pathname === "/api/plugin-pages/tool") {
++      seen.tools.push(req.postDataJSON());
++      return json({ text: '{"ok":true}' });
++    }
+     if (url.pathname === "/api/plugin-pages/read") {
+       seen.reads.push(req.postDataJSON());
+       return json({ period: "today", calls: 12, models: [{ model: "gpt-5", calls: 9 }, { model: "glm-5", calls: 3 }] });
+@@ -77,6 +82,10 @@ function server(lang, seen, opts) {
+       else if (tok === BROKEN && rel === "broken.html") body = BROKEN_HTML;
+       else if (tok === BROKEN && rel === "app.js") body = seen.broken ? "throw new Error('fixture: the panel broke')" : "1";
+       else if (tok === LIB && rel === "index.html") body = LIB_HTML;
++      else if (tok === SCAN && rel === "index.html") {
++        const words = { en: ["Test all", "Test enabled", "Ready"], zh: ["测试全部", "测试已启用", "就绪"], "zh-TW": ["測試全部", "測試已啟用", "就緒"], ja: ["すべてテスト", "有効のみテスト", "準備完了"], de: ["Alle testen", "Aktive testen", "Bereit"] }[lang];
++        body = SCAN_HTML.replace("Test all", words[0]).replace("Test enabled", words[1]).replace("Ready", words[2]);
++      }
+       if (body == null) return route.fulfill({ status: 404, body: "" });
+       return route.fulfill({ status: 200, headers: { "Content-Security-Policy": "sandbox allow-scripts; connect-src 'none'", "Content-Type": type }, body });
+     }
+@@ -95,6 +104,58 @@ async function frameReady(page, tok) {
+ }
+ const fits = (page, sel) => page.evaluate((sel) => { const v = document.querySelector(sel); return v.scrollWidth <= v.clientWidth + 1; }, sel);
+ 
++// Measure the real modal's grid, not an isolated mock grid: a provider
++// slot contributes a label/control pair and must not shift the next Models.
++async function nativeProviderRows(page, hasPanel) {
++  const m = await page.evaluate(() => {
++    const grid = document.querySelector('#modal .editor .ebody');
++    const labels = [...grid.querySelectorAll(':scope > label')];
++    const accounts = labels.find((e) => e.textContent === t("Accounts"));
++    const models = labels.find((e) => e.textContent === t("Models"));
++    const sec = grid.querySelector('.plugin-slot[data-slot="provider"] .plugin-panel');
++    const head = sec?.querySelector('.row-head'), body = sec?.querySelector('.plugin-panel-body');
++    const rect = (e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom }; };
++    const cs = head && getComputedStyle(head), ls = head && getComputedStyle(head.querySelector('.label'));
++    const bs = body && getComputedStyle(body);
++    return { accounts: rect(accounts), accountControl: rect(accounts.nextElementSibling), models: rect(models), modelControl: rect(models.nextElementSibling), head: head && rect(head), body: body && rect(body),
++      label: getComputedStyle(models).fontSize, nativeAlign: getComputedStyle(models).textAlign,
++      panelFont: ls?.fontSize, panelWeight: ls?.fontWeight, panelTransform: ls?.textTransform, panelAlign: cs?.textAlign,
++      note: sec?.querySelector('.note') && getComputedStyle(sec.querySelector('.note')).display,
++      bodyBorder: bs?.borderTopWidth, bodyRadius: bs?.borderRadius, bodyBackground: bs?.backgroundColor, bodyMargin: bs?.margin, bodyMinWidth: bs?.minWidth,
++      overflow: grid.scrollWidth > grid.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth + 1,
++      gap: parseFloat(getComputedStyle(grid).rowGap), columns: getComputedStyle(grid).gridTemplateColumns.split(' ').length,
++      rows: getComputedStyle(grid).gridTemplateRows };
++  });
++  const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 1, `${what}: ${a} != ${b}`);
++  assert.equal(m.overflow, false, "modal has no horizontal overflow");
++  near(m.models.x, m.accounts.x, "Models stays in the native label column");
++  near(m.modelControl.x, m.accountControl.x, "Models control stays in the native control column");
++  if (!hasPanel) {
++    near(m.models.y, m.accountControl.bottom + m.gap, "hidden provider slot leaves no empty row");
++    return;
++  }
++  near(m.head.x, m.accounts.x, "panel label shares the native label column");
++  near(m.body.x, m.accountControl.x, "panel body shares the native control column");
++  assert.equal(m.panelFont, m.label);
++  assert.equal(m.panelAlign, m.nativeAlign);
++  assert.equal(m.panelWeight, "400");
++  assert.equal(m.panelTransform, "none");
++  assert.equal(m.note, "none", "provider panel omits package-name decoration");
++  assert.equal(m.bodyBorder, "0px");
++  assert.equal(m.bodyRadius, "0px");
++  assert.equal(m.bodyBackground, "rgba(0, 0, 0, 0)");
++  assert.equal(m.bodyMargin, "0px");
++  assert.equal(m.bodyMinWidth, "0px");
++  if (m.columns === 1) {
++    assert.ok(m.body.y >= m.head.bottom - 1, `one-column panel control follows its label: ${JSON.stringify(m)}`);
++    assert.ok(m.models.y >= m.body.bottom - 1, "Models follows the complete panel row");
++  } else {
++    assert.equal(m.columns, 2);
++    assert.ok(m.body.x >= m.head.right, "two-column panel control follows its label");
++    assert.ok(m.models.y >= Math.max(m.head.bottom, m.body.bottom) - 1, "Models starts a new native field row");
++  }
++}
++
+ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium", "webkit"])) {
+   test(`${engine}: a plugin's panels draw in magpie's own pages, shut in`, async (t) => {
+     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+@@ -180,8 +241,11 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
+         await page.evaluate(() => openModal(renderEditor(providers.providers[0])));
+         const notes = await frameReady(page, NOTES);
+         assert.equal(await page.locator('#modal .plugin-slot[data-slot="provider"] iframe').getAttribute("sandbox"), "allow-scripts", where);
+-        await notes.waitForFunction(() => window.magpie.context?.provider?.id === "openai");
++        await notes.waitForFunction(() => window.magpie?.context?.provider?.id === "openai");
+         assert.equal(await notes.evaluate(() => magpie.context.provider.name), "OpenAI", where);
++        // hello/context precedes options.get; wait for the note's actual
++        // input handler so filling cannot race its async initialization.
++        await notes.waitForFunction(() => !!document.querySelector("#note")?.oninput);
+         await notes.locator("#note").fill("work account");
+         await notes.locator("#saved").filter({ hasText: "Saved" }).waitFor();
+         assert.deepEqual(seen.options.at(-1), { spec: "/x/magpie-provider-notes", options: { notes: { openai: "work account" } } }, `${where}: its own options`);
+@@ -228,6 +292,69 @@ for (const engine of (process.env.BROWSER ? [process.env.BROWSER] : ["chromium",
+     }
+   });
+ 
++  test(`${engine}: Codex account panels filter providers and call only bound own tools`, async (t) => {
++    const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
++    t.after(() => browser.close());
++    const scan = { ...panel(SCAN, 0, "provider", "Route check", "index.html", "checks", []), titles: { zh: "路由检测", "zh-TW": "路由檢測", ja: "ルート確認", de: "Routenprüfung" }, providers: ["codex"], tools: ["scan"] };
++    const codex = { ...providerList[0], id: "codex", name: "Codex", account: { agent: "codex", agentName: "Codex", user: "fixture@example.test", plan: "free", logins: [{ user: "fixture@example.test", active: true, on: true }] } };
++    for (const lang of ["en", "zh", "zh-TW", "ja", "de"]) {
++      for (const theme of ["light", "dark"]) for (const width of [1100, 420]) {
++        const where = `${engine} ${lang} ${theme} ${width}`;
++        const page = await (await browser.newContext({ viewport: { width, height: 760 }, reducedMotion: "reduce", colorScheme: theme === "dark" ? "light" : "dark" })).newPage();
++        page.setDefaultTimeout(8000);
++        const errors = [];
++        page.on("pageerror", (e) => errors.push(e.message));
++        const seen = { reads: [], options: [], tools: [] };
++        await page.route("**/*", server(lang, seen, { panels: [scan], pages: [], theme, web: true, providers: [...providerList, codex, { ...codex, id: "other", name: "Other account" }] }));
++        await page.goto("http://magpie.test/?view=providers");
++        await page.waitForFunction(() => providers?.providers?.length === 3);
++        // No empty heading or frame for another provider, while the same
++        // provider slot remains available to unfiltered plugins.
++        await page.evaluate(() => openModal(renderEditor(providers.providers[0])));
++        assert.equal(await page.locator('#modal .plugin-slot[data-slot="provider"] .plugin-panel').count(), 0, where);
++        assert.equal(await page.locator('#modal .plugin-slot[data-slot="provider"]').isVisible(), false, where);
++        await page.evaluate(() => openModal(renderEditor(providers.providers[2])));
++        assert.equal(await page.locator('#modal .plugin-slot[data-slot="provider"]').evaluate((e) => getComputedStyle(e).display), "none", `${where}: hidden slot takes no grid cell`);
++        await nativeProviderRows(page, false);
++        await page.evaluate(() => openModal(renderEditor(providers.providers[1])));
++        const frame = await frameReady(page, SCAN);
++        await frame.waitForFunction(() => window.magpie?.context?.provider?.id === "codex");
++        assert.equal(await frame.evaluate(() => magpie.context.provider.name), "Codex", where);
++        assert.equal(await page.locator('#modal .plugin-slot[data-slot="provider"] iframe').getAttribute("sandbox"), "allow-scripts", where);
++        assert.ok(await page.evaluate(() => { const slot = document.querySelector('#modal .plugin-slot'); const accts = document.querySelector('#modal .accts'); return !!accts && !!(accts.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING); }), `${where}: slot follows Accounts`);
++        await frame.waitForFunction(() => window.magpie?.theme?.lang === document.documentElement.lang);
++        await page.waitForFunction(() => document.querySelector('#modal .plugin-panel-frame')?.style.height);
++        await nativeProviderRows(page, true);
++        assert.equal(await page.locator('#modal .plugin-panel-frame').evaluate((e) => getComputedStyle(e).colorScheme), theme, `${where}: frame canvas matches explicit theme despite opposite OS scheme`);
++        assert.equal(await frame.evaluate(() => getComputedStyle(document.documentElement).backgroundColor), "rgba(0, 0, 0, 0)", `${where}: plugin opts into transparency`);
++        assert.deepEqual(await frame.evaluate(() => magpie.tools.call("scan", { enabled: true })), { text: '{"ok":true}' }, where);
++        assert.deepEqual(seen.tools.at(-1), { spec: scan.spec, name: "scan", args: { enabled: true } }, where);
++        await frame.evaluate(() => magpie.tools.call("scan"));
++        assert.deepEqual(seen.tools.at(-1).args, {}, `${where}: default object`);
++        // Even a forged spec in the frame's payload is ignored: ownership
++        // is derived from ev.source and the parent's saved entry.
++        await frame.evaluate(() => new Promise((resolve) => {
++          const id = "forged-spec";
++          const listener = (e) => { if (e.data?.id === id) { removeEventListener("message", listener); resolve(e.data); } };
++          addEventListener("message", listener);
++          parent.postMessage({ magpie: 1, id, method: "tools.call", params: { spec: "other-plugin", name: "scan", args: {} } }, "*");
++        }));
++        assert.equal(seen.tools.at(-1).spec, scan.spec, where);
++        const before = seen.tools.length;
++        for (const [name, args] of [["private", {}], ["scan", []], ["scan", null], ["scan", "bad"]]) {
++          assert.equal(await frame.evaluate(async ([name, args]) => { try { await magpie.tools.call(name, args); return false; } catch { return true; } }, [name, args]), true, where);
++        }
++        assert.equal(seen.tools.length, before, `${where}: undeclared calls never reach API`);
++        if (process.env.ARTIFACT_DIR && ((lang === "zh" && width === 420) || (lang === "en" && width === 1100))) {
++          await fs.mkdir(process.env.ARTIFACT_DIR, { recursive: true });
++          await page.locator('#modal .dialog').screenshot({ path: path.join(process.env.ARTIFACT_DIR, `provider-native-${engine}-${lang}-${theme}-${width}.png`) });
++        }
++        assert.deepEqual(errors, [], where);
++        await page.context().close();
++      }
++    }
++  });
++
+   test(`${engine}: with no plugin's settings, Settings has no Plugins tab`, async (t) => {
+     const browser = await (engine === "webkit" ? webkit.launch() : chromium.launch({ channel: "chromium" }));
+     t.after(() => browser.close());
+diff --git a/internal/plugin/page.go b/internal/plugin/page.go
+index d07d313ec9f1b88180ee7a6b5c56c33792cc7551..2e9fa9efe84cc039fa325bf1fef0d41c8c9c2376 100644
+--- a/internal/plugin/page.go
++++ b/internal/plugin/page.go
+@@ -27,6 +27,9 @@ type WindowSpec struct {
+ 	// Reads are the reads it asked for that magpie has (PageReads), in
+ 	// the order asked.
+ 	Reads []string
++	// Tools are explicit names of this plugin's own tools that its page
++	// and panels may call (magpie.tools), never other plugins' tools.
++	Tools []string
+ }
+ 
+ // PageSpec is a plugin's own page in magpie's window.
+@@ -69,6 +72,9 @@ type PanelSpec struct {
+ 	Titles map[string]string
+ 	File   string // the panel's HTML, inside the plugin's folder
+ 	Dir    string // the folder the panel's files are served from: File's
++	// Providers limits a provider-slot panel to these provider ids.
++	// nil is unfiltered; an explicitly empty or invalid list matches none.
++	Providers []string
+ }
+ 
+ // ActionSpec is an item a plugin adds to one of magpie's menus
+@@ -162,15 +168,17 @@ func Window(target string) (w *WindowSpec, only bool) {
+ 		Menu      string          `json:"menu"`
+ 		Service   json.RawMessage `json:"service"`
+ 		KeepAlive json.RawMessage `json:"keepAlive"`
++		Providers json.RawMessage `json:"providers"`
+ 	}
+ 	var pkg struct {
+ 		Main    string          `json:"main"`
+ 		Exports json.RawMessage `json:"exports"`
+ 		Magpie  struct {
+-			Page        *part    `json:"page"`
+-			Panels      []part   `json:"panels"`
+-			Actions     []part   `json:"actions"`
+-			Permissions []string `json:"permissions"`
++			Page        *part           `json:"page"`
++			Panels      []part          `json:"panels"`
++			Actions     []part          `json:"actions"`
++			Permissions []string        `json:"permissions"`
++			Tools       json.RawMessage `json:"tools"`
+ 		} `json:"magpie"`
+ 	}
+ 	if json.Unmarshal(b, &pkg) != nil {
+@@ -207,7 +215,11 @@ func Window(target string) (w *WindowSpec, only bool) {
+ 		if !ok || !slices.Contains(PanelSlots, slot) {
+ 			continue
+ 		}
+-		w.Panels = append(w.Panels, PanelSpec{Slot: slot, Title: strings.TrimSpace(pn.Title), Titles: titles(pn.Titles), File: file, Dir: filepath.Dir(file)})
++		var providers []string
++		if len(pn.Providers) > 0 {
++			providers = windowNames(pn.Providers, nil)
++		}
++		w.Panels = append(w.Panels, PanelSpec{Slot: slot, Title: strings.TrimSpace(pn.Title), Titles: titles(pn.Titles), File: file, Dir: filepath.Dir(file), Providers: providers})
+ 	}
+ 	// an action opens the plugin's page, so a plugin with none has no
+ 	// action; an id given twice is the first's
+@@ -229,9 +241,31 @@ func Window(target string) (w *WindowSpec, only bool) {
+ 			w.Reads = append(w.Reads, r)
+ 		}
+ 	}
++	w.Tools = windowNames(pkg.Magpie.Tools, windowToolName)
+ 	return w, pkg.Main == "" && len(pkg.Exports) == 0
+ }
+ 
++// windowToolName matches the host's own tool names, not MCP-prefixed names
++// or a blanket permission such as tools:own.
++var windowToolName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,48}$`)
++
++// windowNames reads an explicit list, trimmed and deduplicated. A malformed
++// list grants nothing; a present provider filter must never become unfiltered.
++func windowNames(raw json.RawMessage, valid *regexp.Regexp) []string {
++	out := []string{}
++	var names []string
++	if json.Unmarshal(raw, &names) != nil {
++		return out
++	}
++	for _, name := range names {
++		name = strings.TrimSpace(name)
++		if name != "" && (valid == nil || valid.MatchString(name)) && !slices.Contains(out, name) {
++			out = append(out, name)
++		}
++	}
++	return out
++}
++
+ // service is a page's magpie.page.service, or nil when it names none or
+ // names it wrong: {"port": a TCP port, "option": the plugin's option that
+ // moves it, optional}. One that is wrong leaves the page as it is.
+diff --git a/internal/gui/pluginpage_tools.go b/internal/gui/pluginpage_tools.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..baf98119279da860882a307e5b854c6f094fad11
+--- /dev/null
++++ b/internal/gui/pluginpage_tools.go
+@@ -0,0 +1,130 @@
++package gui
++
++import (
++	"bytes"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"net/http"
++	"slices"
++
++	"github.com/yetone/magpie/internal/gwtool"
++	"github.com/yetone/magpie/internal/plugin"
++)
++
++const pageToolArgsMax = 64 << 10
++const pageToolReplyMax = 1 << 20
++
++// These seams keep permission tests out of the real plugin host and network.
++var pageTools = plugin.Tools
++var pageRunTool = plugin.RunTool
++
++// pageToolAllowed checks the current installed entry and window declaration,
++// not a spec or permission claimed by a frame. It is also checked after listing
++// tools, since starting the host can take time.
++func pageToolAllowed(spec, name string) error {
++	list, err := plugin.ReadList()
++	if err != nil {
++		return err
++	}
++	for _, e := range list.Plugins {
++		if e.Spec != spec || e.Off {
++			continue
++		}
++		w, _ := plugin.Window(plugin.Target(spec))
++		if w != nil && slices.Contains(w.Tools, name) {
++			return nil
++		}
++	}
++	return fmt.Errorf("no plugin page tool %q for %q", name, spec)
++}
++
++// pluginPageTool is the window's own-tool bridge. The sandbox cannot reach
++// this API (noFramedAPI); pluginpages.js supplies the identified frame's spec.
++func pluginPageTool(rw http.ResponseWriter, r *http.Request) {
++	var in struct {
++		Spec string          `json:"spec"`
++		Name string          `json:"name"`
++		Args json.RawMessage `json:"args"`
++	}
++	// Bound the whole envelope too, while allowing a full 64 KiB args object.
++	d := json.NewDecoder(http.MaxBytesReader(rw, r.Body, 2*pageToolArgsMax))
++	if err := d.Decode(&in); err != nil {
++		fail(rw, err)
++		return
++	}
++	if err := d.Decode(new(any)); err != io.EOF {
++		fail(rw, errors.New("a tool call is one JSON object"))
++		return
++	}
++	args := bytes.TrimSpace(in.Args)
++	if len(args) > pageToolArgsMax || len(args) == 0 || args[0] != '{' {
++		fail(rw, errors.New("a tool's arguments are a JSON object of at most 64 KiB"))
++		return
++	}
++	if err := pageToolAllowed(in.Spec, in.Name); err != nil {
++		pageToolDenied(rw, err)
++		return
++	}
++	if !gwtool.Served(gwtool.PluginTools) {
++		pageToolDenied(rw, errors.New("magpie's Plugin tools plugin is off"))
++		return
++	}
++	tools, err := pageTools(r.Context())
++	if err != nil {
++		pageToolFail(rw, err)
++		return
++	}
++	found := false
++	for _, p := range tools {
++		if p.Spec == in.Spec && slices.ContainsFunc(p.Tools, func(t plugin.Tool) bool { return t.Name == in.Name }) {
++			found = true
++			break
++		}
++	}
++	if !found {
++		pageToolDenied(rw, fmt.Errorf("no tool %q for plugin %q", in.Name, in.Spec))
++		return
++	}
++	if err := pageToolAllowed(in.Spec, in.Name); err != nil {
++		pageToolDenied(rw, err)
++		return
++	}
++	if !gwtool.Served(gwtool.PluginTools) {
++		pageToolDenied(rw, errors.New("magpie's Plugin tools plugin is off"))
++		return
++	}
++	text, err := pageRunTool(r.Context(), in.Spec, in.Name, args, "plugin-page")
++	if err != nil {
++		pageToolFail(rw, err)
++		return
++	}
++	// Bound the encoded response too: escaping can make JSON larger than text.
++	if len(text) > pageToolReplyMax {
++		fail(rw, errors.New("a tool's reply exceeds 1 MiB"))
++		return
++	}
++	out, err := json.Marshal(struct {
++		Text string `json:"text"`
++	}{text})
++	if err != nil || len(out) > pageToolReplyMax {
++		fail(rw, errors.New("a tool's reply exceeds 1 MiB"))
++		return
++	}
++	rw.Header().Set("Content-Type", "application/json")
++	_, _ = rw.Write(out)
++}
++
++func pageToolDenied(rw http.ResponseWriter, err error) {
++	rw.Header().Set("Content-Type", "application/json")
++	rw.WriteHeader(http.StatusForbidden)
++	_ = json.NewEncoder(rw).Encode(map[string]string{"error": err.Error()})
++}
++
++func pageToolFail(rw http.ResponseWriter, err error) {
++	if len(err.Error()) > pageToolReplyMax/8 {
++		err = errors.New("a tool's error exceeds 1 MiB")
++	}
++	fail(rw, err)
++}
+diff --git a/internal/gui/pluginpage_tools_test.go b/internal/gui/pluginpage_tools_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..1489c9a5978a639e59a255d84cc9bd06b1df8c90
+--- /dev/null
++++ b/internal/gui/pluginpage_tools_test.go
+@@ -0,0 +1,158 @@
++package gui
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++
++	"github.com/yetone/magpie/internal/gwtool"
++	"github.com/yetone/magpie/internal/plugin"
++)
++
++func TestPluginPageToolsBoundToOwnDeclaration(t *testing.T) {
++	on, off, first, _ := panelPlugins(t)
++	// Give both a panel-only plugin and a page plugin an explicit grant.
++	for _, spec := range []string{on, off, first} {
++		file := filepath.Join(spec, "package.json")
++		b, err := os.ReadFile(file)
++		if err != nil {
++			t.Fatal(err)
++		}
++		var pkg map[string]any
++		if err := json.Unmarshal(b, &pkg); err != nil {
++			t.Fatal(err)
++		}
++		m := pkg["magpie"].(map[string]any)
++		m["tools"] = []string{"scan", "unknown"}
++		if panels, ok := m["panels"].([]any); ok {
++			panels[0].(map[string]any)["providers"] = []string{"codex"}
++		}
++		b, _ = json.Marshal(pkg)
++		if err := os.WriteFile(file, b, 0o644); err != nil {
++			t.Fatal(err)
++		}
++	}
++	oldTools, oldRun := pageTools, pageRunTool
++	t.Cleanup(func() { pageTools, pageRunTool = oldTools, oldRun })
++	lists, runs := 0, 0
++	pageTools = func(context.Context) ([]plugin.PluginTools, error) {
++		lists++
++		return []plugin.PluginTools{{Spec: on, Tools: []plugin.Tool{{Name: "scan"}, {Name: "private"}}}, {Spec: first, Tools: []plugin.Tool{{Name: "scan"}, {Name: "unknown"}}}}, nil
++	}
++	pageRunTool = func(_ context.Context, spec, name string, args json.RawMessage, agent string) (string, error) {
++		runs++
++		if spec != on && spec != first || name != "scan" || string(args) != `{"enabled":true}` || agent != "plugin-page" {
++			t.Errorf("run crossed binding: %q %q %s %q", spec, name, args, agent)
++		}
++		return `{"ok":true}`, nil
++	}
++	gate := gwtool.Gate()
++	t.Cleanup(gate)
++	serve := gwtool.Serve(gwtool.PluginTools)
++	t.Cleanup(serve)
++	h := pageMux()
++	post := func(spec, name, args string) *httptest.ResponseRecorder {
++		t.Helper()
++		b, _ := json.Marshal(map[string]any{"spec": spec, "name": name, "args": json.RawMessage(args)})
++		return do(h, httptest.NewRequest("POST", "/api/plugin-pages/tool", strings.NewReader(string(b))))
++	}
++	for _, spec := range []string{on, first} {
++		w := post(spec, "scan", `{"enabled":true}`)
++		if w.Code != 200 || w.Body.String() != `{"text":"{\"ok\":true}"}` {
++			t.Fatalf("own call: %d %s", w.Code, w.Body)
++		}
++	}
++	// unknown is declared by on, but is only implemented by first. Never
++	// resolve it by name across plugins, even when another spec gives it.
++	for _, tc := range []struct{ spec, name string }{{off, "scan"}, {"missing", "scan"}, {on, "private"}, {on, "unknown"}} {
++		before := runs
++		w := post(tc.spec, tc.name, `{}`)
++		if w.Code != http.StatusForbidden || runs != before {
++			t.Errorf("denied %q %q: %d %s; runs=%d", tc.spec, tc.name, w.Code, w.Body, runs)
++		}
++	}
++	// Filter and allowlist reach both JSON contracts; absent tools is [].
++	var panels []pluginPanel
++	w := do(h, httptest.NewRequest("GET", "/api/plugin-panels", nil))
++	if err := json.Unmarshal(w.Body.Bytes(), &panels); err != nil || len(panels) == 0 || len(panels[0].Tools) != 2 || len(panels[0].Providers) != 1 || panels[0].Providers[0] != "codex" {
++		t.Fatalf("panel metadata: %s %v", w.Body, err)
++	}
++	var pages []pluginPage
++	w = do(h, httptest.NewRequest("GET", "/api/plugin-pages", nil))
++	if err := json.Unmarshal(w.Body.Bytes(), &pages); err != nil || len(pages) < 2 || len(pages[0].Tools) != 2 || pages[1].Tools == nil {
++		t.Fatalf("page metadata: %s %v", w.Body, err)
++	}
++
++	for _, args := range []string{`null`, `[]`, `"x"`, `1`, `true`, `{"x":"` + strings.Repeat("x", pageToolArgsMax) + `"}`} {
++		before := lists
++		w := post(on, "scan", args)
++		if w.Code != http.StatusBadRequest || lists != before {
++			t.Errorf("invalid args reached host: %d (lists %d -> %d)", w.Code, before, lists)
++		}
++	}
++	// A sandboxed iframe still cannot post this API itself.
++	r := httptest.NewRequest("POST", "/api/plugin-pages/tool", strings.NewReader(`{}`))
++	r.Header.Set("Origin", "null")
++	before := lists
++	if w := do(h, r); w.Code == 200 || lists != before {
++		t.Errorf("frame reached host: %d", w.Code)
++	}
++	serve()
++	before = lists
++	if w := post(on, "scan", `{}`); w.Code != http.StatusForbidden || lists != before {
++		t.Errorf("off gate reached host: %d", w.Code)
++	}
++}
++
++func TestPluginPageToolReplyAndFailures(t *testing.T) {
++	on, _, _, _ := panelPlugins(t)
++	file := filepath.Join(on, "package.json")
++	b, err := os.ReadFile(file)
++	if err != nil {
++		t.Fatal(err)
++	}
++	var pkg map[string]any
++	if err := json.Unmarshal(b, &pkg); err != nil {
++		t.Fatal(err)
++	}
++	pkg["magpie"].(map[string]any)["tools"] = []string{"scan"}
++	b, _ = json.Marshal(pkg)
++	if err := os.WriteFile(file, b, 0o644); err != nil {
++		t.Fatal(err)
++	}
++	oldTools, oldRun := pageTools, pageRunTool
++	t.Cleanup(func() { pageTools, pageRunTool = oldTools, oldRun })
++	serve := gwtool.Serve(gwtool.PluginTools)
++	t.Cleanup(serve)
++	pageTools = func(context.Context) ([]plugin.PluginTools, error) {
++		return []plugin.PluginTools{{Spec: on, Tools: []plugin.Tool{{Name: "scan"}}}}, nil
++	}
++	body, _ := json.Marshal(map[string]any{"spec": on, "name": "scan", "args": map[string]any{}})
++	post := func() *httptest.ResponseRecorder {
++		return do(pageMux(), httptest.NewRequest("POST", "/api/plugin-pages/tool", strings.NewReader(string(body))))
++	}
++	for _, text := range []string{strings.Repeat("x", pageToolReplyMax+1), strings.Repeat("\x00", pageToolReplyMax/2)} {
++		pageRunTool = func(context.Context, string, string, json.RawMessage, string) (string, error) { return text, nil }
++		if w := post(); w.Code == 200 || w.Body.Len() > pageToolReplyMax {
++			t.Errorf("oversized reply: %d %d", w.Code, w.Body.Len())
++		}
++	}
++	for _, msg := range []string{"fixture tool failure", strings.Repeat("x", pageToolReplyMax)} {
++		pageRunTool = func(context.Context, string, string, json.RawMessage, string) (string, error) {
++			return "", errors.New(msg)
++		}
++		if w := post(); w.Code != 400 || w.Body.Len() > pageToolReplyMax || !strings.Contains(w.Body.String(), "error") {
++			t.Errorf("tool error: %d %d", w.Code, w.Body.Len())
++		}
++	}
++	pageTools = func(context.Context) ([]plugin.PluginTools, error) { return nil, errors.New("fixture list failure") }
++	if w := post(); w.Code != 400 || !strings.Contains(w.Body.String(), "fixture list failure") {
++		t.Errorf("list error: %d %s", w.Code, w.Body)
++	}
++}
+diff --git a/internal/plugin/page_permissions_test.go b/internal/plugin/page_permissions_test.go
+new file mode 100644
+index 0000000000000000000000000000000000000000..2111d3ebed016eb30470a95a2c06ada5aec19d81
+--- /dev/null
++++ b/internal/plugin/page_permissions_test.go
+@@ -0,0 +1,47 @@
++package plugin
++
++import (
++	"os"
++	"path/filepath"
++	"slices"
++	"strings"
++	"testing"
++)
++
++func TestWindowProviderFiltersAndToolAllowlist(t *testing.T) {
++	d := t.TempDir()
++	if err := os.WriteFile(filepath.Join(d, "index.html"), []byte("<p>fixture</p>"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	read := func(filter, tools string) *WindowSpec {
++		t.Helper()
++		pkg := `{"magpie":{"page":{"file":"index.html"},"panels":[{"slot":"provider","file":"index.html"` + filter + `}]` + tools + `}}`
++		if err := os.WriteFile(filepath.Join(d, "package.json"), []byte(pkg), 0o644); err != nil {
++			t.Fatal(err)
++		}
++		w, _ := Window(d)
++		if w == nil || w.Page == nil || len(w.Panels) != 1 {
++			t.Fatalf("window lost for %s: %+v", pkg, w)
++		}
++		return w
++	}
++	w := read(`,"providers":[" codex ","codex","","openai"]`, `,"tools":[" codex_route_scan ","codex_route_scan","status-2","tools:own","other/tool","*","", "`+strings.Repeat("a", 49)+`"]`)
++	if !slices.Equal(w.Panels[0].Providers, []string{"codex", "openai"}) {
++		t.Errorf("providers: %v", w.Panels[0].Providers)
++	}
++	if !slices.Equal(w.Tools, []string{"codex_route_scan", "status-2"}) {
++		t.Errorf("tools: %v", w.Tools)
++	}
++	if w := read("", ""); w.Panels[0].Providers != nil || len(w.Tools) != 0 {
++		t.Errorf("absent grants: %+v", w)
++	}
++	for _, raw := range []string{`[]`, `null`, `"codex"`, `{}`, `["codex",7]`} {
++		w := read(`,"providers":`+raw, `,"tools":`+raw)
++		if w.Panels[0].Providers == nil || len(w.Panels[0].Providers) != 0 {
++			t.Errorf("filter %s became unfiltered: %v", raw, w.Panels[0].Providers)
++		}
++		if len(w.Tools) != 0 {
++			t.Errorf("tools %s granted %v", raw, w.Tools)
++		}
++	}
++}
