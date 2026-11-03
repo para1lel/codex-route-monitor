@@ -21,7 +21,8 @@ jobs:
       # Tests use temporary state and fake provider/probe responses, never accounts.
       - run: npm test
   panel:
-    runs-on: ubuntu-latest
+    # Keep the browser image within the support matrix of pinned Playwright.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
