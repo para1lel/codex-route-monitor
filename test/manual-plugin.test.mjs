@@ -3,7 +3,8 @@ import test from "node:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import codexRouteMonitor from "../index.js";
+import codexRouteMonitor, { createPlugin } from "../index.js";
+import { createManualController } from "../lib/manual.mjs";
 
 // This only loads the plugin with scheduler:false and calls non-scanning tools.
 // Neither provider commands nor the scan CLI are run.
@@ -17,7 +18,8 @@ test("plugin keeps the README tool names and default {tool} shape", async (t) =>
     else process.env.CODEX_ROUTE_MONITOR_HOME = previous;
     fs.rmSync(dir, { recursive: true, force: true });
   });
-  const plugin = await codexRouteMonitor();
+  assert.equal(typeof codexRouteMonitor, "function");
+  const plugin = await createPlugin({ initialiseUI: async () => ({ manual: createManualController() }) })();
   assert.deepEqual(Object.keys(plugin), ["tool"]);
   assert.deepEqual(Object.keys(plugin.tool).sort(), ["codex_route_scan", "codex_route_status"]);
   const scan = plugin.tool.codex_route_scan;

@@ -2,7 +2,7 @@
 //
 // The plugin gives two tools — one starts a scan in the background, one
 // reports what the monitor knows — and starts the schedule that runs at
-// midnight and every three hours. magpie calls this once per plugin host, at
+// midnight and at 08:00/16:00. magpie calls this once per plugin host, at
 // its start and after every plugin change; a plugin host that restarts starts
 // the schedule again, and the scan lock keeps two runs from overlapping.
 
@@ -11,9 +11,24 @@ import { statusReport } from "./lib/core.mjs";
 import { createManualController } from "./lib/manual.mjs";
 import { ensureRunner, schedulePlan, startScheduler } from "./lib/schedule.mjs";
 
-const manual = createManualController();
+import { prepareUIRuntime, createRuntimeManualController } from "./lib/ui-runtime.mjs";
+import { startUIService } from "./lib/ui-service-manager.mjs";
+import { validateUIPort } from "./lib/ui-service.mjs";
 
-export default async function codexRouteMonitor(input, options) {
+async function setupUI(options = {}) {
+  const runtime = prepareUIRuntime();
+  const manual = await createRuntimeManualController(runtime);
+  await startUIService({ runtime, port: validateUIPort(options.uiPort ?? 3489) });
+  return { manual };
+}
+
+// Injection keeps plugin-shape tests isolated: loading a test plugin must not
+// start a real daemon, acquire a real scan lock or use the vendor's quota.
+export function createPlugin({ initialiseUI = setupUI } = {}) {
+return async function codexRouteMonitor(input, options) {
+  let manual = createManualController();
+  try { ({ manual } = await initialiseUI(options || {})); }
+  catch (error) { logLine(`route-check UI unavailable: ${String(error?.message ?? error)}`, { echo: false }); }
   const config = loadConfig();
   // a plugin update replaces this folder: put the Windows launcher back where
   // the scheduled tasks expect it, before a slot can come round
@@ -66,4 +81,7 @@ export default async function codexRouteMonitor(input, options) {
       },
     },
   };
+};
 }
+
+export default createPlugin();

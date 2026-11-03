@@ -1,0 +1,9 @@
+{
+  "path": "internal/gui/pagebridge.js",
+  "sha256": "c99d8cbbd361841f5d817a3e0eae53799f981fb68fe064056c19838e807e6c67",
+  "versions": {
+    "stock2523": "fb3942ee67a719a4e4733cdb632873defd42f28b",
+    "stock2817": "3088872e634670f0a10d516bc6e4a8d2579f0422"
+  },
+  "note": "Exact upstream bytes are identical at both audited bases; copyright and license in stock-pagebridge.LICENSE.txt."
+}

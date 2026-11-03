@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>路由检测</title>
+<script nonce="__CSP_NONCE__">
+window.CodexMonitorBoot = __CODEX_MONITOR_BOOT__;
+// Explicit sources work in opaque-origin WebKit on both old and new hosts.
+(() => {const m=document.createElement('meta');m.httpEquiv='Content-Security-Policy';m.content='connect-src '+new URL('.',location.href).href+';';document.head.appendChild(m);})();
+</script>
+<style nonce="__CSP_NONCE__">
+:root{color-scheme:light;--bg:#faf9f7;--fg:#272624;--muted:#78736b;--line:#e6e2dc;--control:#fff;--accent:#645645;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg)}main{max-width:800px;padding:32px 28px;margin:0 auto}header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:26px}h1{font-size:20px;font-weight:600;margin:0;letter-spacing:-.02em}.actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}button{font:inherit;color:inherit;background:var(--control);border:1px solid var(--line);border-radius:6px;min-height:34px;padding:6px 13px;cursor:pointer}button:hover:not(:disabled){border-color:var(--accent)}button:disabled{opacity:.45;cursor:default}button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}#refresh{width:34px;padding:7px;display:grid;place-items:center}#refresh svg{width:16px;height:16px}.state{padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:22px}#status{margin:0;min-height:21px;font-weight:500}#details{margin:7px 0 0;color:var(--muted);font-size:12px;line-height:1.8}#error{color:#b34b3b;font-size:13px;line-height:1.7;overflow-wrap:anywhere;margin-top:14px}footer{font-size:12px;color:var(--muted);line-height:1.9;margin-top:18px}progress{width:100%;height:4px;margin-top:14px;accent-color:var(--accent)}[hidden]{display:none!important}:root[data-dark="true"]{color-scheme:dark;--bg:#1e1d1b;--fg:#e4e0da;--muted:#a09a91;--line:#3a3732;--control:#292723;--accent:#bba98e}@media(max-width:480px){main{padding:24px 18px}header{margin-bottom:22px}h1{font-size:18px}.actions button{padding:6px 11px}}
+</style>
+<script nonce="__CSP_NONCE__" src="panel-controller.js" defer></script><script nonce="__CSP_NONCE__" src="service.js" defer></script>
+</head>
+<body><main>
+<header><h1 id="title">路由检测</h1><button id="refresh" type="button" aria-label="刷新" title="刷新"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 18 17"/></svg></button></header>
+<div class="actions"><button id="all" type="button" disabled>测试全部</button><button id="enabled" type="button" disabled>测试已启用</button></div>
+<section class="state" aria-live="polite"><p id="status">正在连接…</p><p id="details"></p><progress id="progress" hidden></progress></section>
+<p id="error" role="alert" hidden></p><footer id="note">检测在后台运行，关闭此页不会中断。命中 Luna 的账号将被停用，正常账号启用，失败时保留原状态。</footer>
+</main></body></html>
